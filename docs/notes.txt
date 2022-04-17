@@ -1,0 +1,39 @@
+data_input[i] = hashed[i] - hashed[i-1]*16
+hashed[i] = data_input[i] + hashed[i-1] 
+hashed[0] = 0 # initial value
+hashed[1] = data_input[1] + hashed[0]*16
+hashed[2] = data_input[2] + hashed[1]*16
+hashed[3] = data_input[3] + hashed[2]*16
+hashed[4] = data_input[4] + hashed[3]*16
+hashed[5] = data_input[5] + hashed[4]*16
+hashed[6] = data_input[6] + hashed[5]*16
+hashed[7] = data_input[7] + hashed[6]*16
+hashed[8] = data_input[8] + hashed[7]*16
+hashed[8] = password
+hashed[8] = data_input[8] 
+            + (data_input[7]
+            + (data_input[6] 
+            + (data_input[5] 
+            + (data_input[4] 
+            + (data_input[3]
+            + (data_input[2] 
+            + (data_input[1])*16*16)*16)*16)*16)*16)*16)*16
+hashed[8]//16 = data_input[8]//16 + thing
+#                    ^ this expression is 0 since data_input is between 0-9
+password // 16 = thing[1] # hashed[8] // 16
+thing[2] // 16 = thing[3]
+thing[3] // 16 = thing[4]
+...
+thing[8] // 16 = thing[7] = data_input[1]
+password // 16 // 16 // 16 .. // 16
+data_input[1] = password // 16**7 = hashed[1]
+
+-----------
+
+digits[1] = password // 16**7
+hashed[1] = digits[1]
+
+hashed[2] = digits[2] + hashed[1]*16
+digits[2] = hashed[1]*16 - hashed[2]
+
+digits[2] = digits[1]*16 - hashed[2]
