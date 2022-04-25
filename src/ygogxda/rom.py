@@ -15,14 +15,30 @@ class YugiohROM:
     CARD_TEXTS_EN          = slice(0x08f2b950,0x08f58293)  # 0x00, 0x00, This lege...
     CARD_NAMES_OFFSETS_EN  = mem_region(0x08f2a68c,1201*4) # 1201 ints (4 Bytes each)
     CARD_TEXTS_OFFSETS_EN  = mem_region(0x08f58294,1201*4)
+    TUTORIAL_INSTRUCT_EN   = mem_region(0x097fd78c,  68*4) # 68 Pointers to Strings 
+    TUTORIAL_SECTIONS_EN   = mem_region(0x097fd78c,  11*4) # 11 Pointers to Strings 
+    CHARS_FULL_NAMES_EN    = mem_region(0x097f0bc8,  36*4) # 36 Pointers to Strings
+    CHARS_SHORT_NAMES_EN   = mem_region(0x097f0c58,  36*4) # 36 Pointers to Strings
+    PLACES_NAMES_EN        = mem_region(0x097f0ce8,  26*4) # 26 Pointers to Strings
+    DUELIST_TITLES_EN      = mem_region(0x097f0d50,  14*4) # 14 ..
+    ACADEMY_DORMS_EN       = mem_region(0x097f0d88,   3*4)
+    CARD_MONSTER_TYPES_EN  = mem_region(0x097d7b38.  24*4)
+    CARD_MONSTER_ATTRS_EN  = mem_region(0x097d7b9c.   7*4)
+    CARD_TYPES_EN          = mem_region(0x097d7bb8.   7*4)
+
     # Japanese
     CARD_NAMES_JP          = slice(0x08f5b180,0x08f61183)  # 0x00, 0x00, ブルーアイズ...
     CARD_TEXTS_JP          = slice(0)
     CARD_NAMES_OFFSETS_JP  = mem_region(0x08f59ebc,1201*4) # 1201 ints (4 Bytes each)
     CARD_TEXTS_OFFSETS_JP  = slice(0)
+    EVENT_NAMES_JP         = mem_region(0x0942c760,71*516) # 71 Structured Data
+    OPPONENT_NAMES_JP      = mem_region(0x097f468c,36*4)   # 36 Pointers to Strings
+    EXAM_TYPE_JP           = mem_region(0x097f471c, 7*4)   #  7 Pointers to Strings
     # LUT
     # - Ordinal number to id
     CARD_NUMBER_TO_ID      = mem_region(0x087a8624,1201*2) # 1201 words (2 Bytes)
+    # - Event to related Player ID
+    EVENT_TO_PLAYER_ID     = mem_region(0x0942c760, 150*2)
     # - Card password keys
     CARD_PASSWORD_KEYS     = mem_region(0x087a8f88,1201*4) # 1201 ints (4 Bytes)
     # MISC strings
@@ -54,20 +70,20 @@ class YugiohROM:
 
     def card_text(self, card_id):
         card_offsets = self.rom[YugiohROM.CARD_TEXTS_OFFSETS_EN]
-        offsets = card_offsets.read_array(1201,dtype='I')
+        offsets      = card_offsets.read_array(1201,dtype='I')
         string_base  = YugiohROM.CARD_TEXTS_EN.start
         string_start = string_base + offsets[card_id]
         string_stop  = string_base + offsets[card_id+1] - 1
-        card_text = self.rom[string_start:string_stop]
+        card_text    = self.rom[string_start:string_stop]
         return card_text
 
     def card_name(self, card_id):
         card_offsets = self.rom[YugiohROM.CARD_NAMES_OFFSETS_EN]
-        offsets = card_offsets.read_array(1201,dtype='I')
+        offsets      = card_offsets.read_array(1201,dtype='I')
         string_base  = YugiohROM.CARD_NAMES_EN.start
         string_start = string_base + offsets[card_id]
         string_stop  = string_base + offsets[card_id+1] - 1
-        card_name = self.rom[string_start:string_stop]
+        card_name    = self.rom[string_start:string_stop]
         return card_name
 
     @property

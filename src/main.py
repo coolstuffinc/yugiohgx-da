@@ -62,13 +62,9 @@ def main():
     ygo.patch(card_text)
 
     # Patch 3 - Change Mystic Elf card name 
-    # Analogous process...
+    # Analogous process... this time using a helper
     card_name = ygo.card_name(2)
-    new_text = 'zeszinCoringa'
-    # Pad the custom text with zeros
-    padding  = b'\x00' * (len(card_name) - len(new_text))
-    # Overwrite memory region
-    card_name[:] = bytes(new_text,'ascii') + padding
+    card_name[:] = text_padding('zeszinCoringa',len(card_name))
     # Apply second patch!
     ygo.patch(card_name)
 

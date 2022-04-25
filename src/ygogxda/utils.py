@@ -39,6 +39,7 @@ charset_decode = lambda buffer: (
               .replace(b'\xf0\xf3',b'') 
               .replace(b'\xf0\xae',b'') 
               .replace(b'\xf0\x9d',b'') 
+              .replace(b'\x81\xf4',b'♪')
               .replace(b'\x00',b'')
               .decode('utf-8'))
 
