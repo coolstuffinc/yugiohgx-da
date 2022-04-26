@@ -4,29 +4,7 @@ from ygogxda.utils import text_padding
 ROM_FILENAME    = 'yugioh_gx_duel_academy.gba'
 SAMPLE_FILENAME = 'card_custom_zeszin.png'
 
-def main():
-    ygo = YugiohROM(ROM_FILENAME)
-    # Check game title field
-    assert(ygo.game_title == 'YUGIOHGXDA')
-
-    # Input a wrong password
-    card_id = ygo.passwords.enter('WRONGPASS')
-    assert(card_id == 0)
-    # Unlocks "Calamity of the Wicked"
-    password = ygo.passwords.unlock(719)
-    assert(password == '01224927')
-    card_id = ygo.passwords.enter(password)
-    # Consistency tests
-    assert(card_id == 719)
-    assert(ygo.card_names[card_id] == 'Calamity of the Wicked')
-    assert(ygo.card_texts[card_id] == \
-            "Can be activated when your opponent's Monster attacks. "
-            "Destroys all Spell and Trap cards on the Field.")
-
-    # Loop over and extract card artworks
-    for idx,artwork in enumerate(ygo.card_images):
-        artwork.save(f"/tmp/card-{idx:04d}.png")
-
+def example_patch_card(ygo):
     # Patch 1 - Change Mystic Elf artwork
     from PIL import Image
     import numpy as np
@@ -78,6 +56,40 @@ def main():
 
     # Save it and it's done!
     ygo.save('/tmp/zeszinLUL.gba')
+
+def example_extract_card_artwork(ygo):
+    # Loop over and extract card artworks
+    for idx,artwork in enumerate(ygo.card_images):
+        artwork.save(f"/tmp/card-{idx:04d}.png")
+
+def example_password_handling(ygo):
+    # Input a wrong password
+    card_id = ygo.passwords.enter('WRONGPASS')
+    assert(card_id == 0)
+    # Find the card id for a given card name 
+    card_id = ygo.card_names.index("Calamity of the Wicked")
+    assert(card_id == 719)
+    # Retrieve the password for the card id
+    password = ygo.passwords.unlock(card_id)
+    assert(password == '01224927')
+    # Enter the reversed password and get the unlocked card_id
+    card_id = ygo.passwords.enter(password)
+    # Ensure the unlocked card id is what we were looking for 
+    assert(card_id == 719)
+    assert(ygo.card_names[card_id] == 'Calamity of the Wicked')
+    assert(ygo.card_texts[card_id] == 
+            "Can be activated when your opponent's Monster attacks. "
+            "Destroys all Spell and Trap cards on the Field.")
+
+def main():
+    ygo = YugiohROM(ROM_FILENAME)
+    assert(ygo.game_title == 'YUGIOHGXDA')
+    assert(ygo.game_code == 'BYGE'
+        or ygo.game_code == 'BYGP')
+
+    example_password_handling(ygo)
+    example_extract_card_artwork(ygo)
+    example_patch_card(ygo)
 
 if __name__ == '__main__':
     main()

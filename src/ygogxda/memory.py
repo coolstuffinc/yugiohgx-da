@@ -80,7 +80,6 @@ class MemoryEmulator:
         integers = self.read_struct(fmt, **kwargs)
         return integers 
 
-
     def read_bytes(self, size, offset=0):
         key = mem_region(offset,size)
         virt_key = key if is_virt_address(self.region,key) \

@@ -1,3 +1,5 @@
+from .utils import charset_decode
+
 class GBAHeader:
     """
     This class holds the GBA header information, as follows:
@@ -17,10 +19,12 @@ class GBAHeader:
     | 189   |   1  | db     | byte      | complement_check | Complement Check
     | 190   |   2  | db[2]  | byte[2]   | reserved2        | Reserved area
     """
-    STRUCT_FMT = '<i156s12s4s2s1b1b1b7s1b1b2s'
+    STRUCT_FMT = '<I156s12s4s2s1b1b1b7s1b1b2s'
     def __init__(self, data):
-        (self.rom_entry_point, self.nintendo_logo,    self.game_title,
-         self.game_code,       self.maker_code,       self.fixed_value, 
-         self.main_unit_code,  self.device_type,      self.reserved,
-         self.software_vers,   self.complement_check, self.reserved2) = data 
+        fields = ('rom_entry_point', 'nintendo_logo',    'game_title',
+                  'game_code',       'maker_code',       'fixed_value', 
+                  'main_unit_code',  'device_type',      'reserved',
+                  'software_vers',   'complement_check', 'reserved2')
+        for idx, field in enumerate(fields):
+            setattr(self, field, data[idx])
 
