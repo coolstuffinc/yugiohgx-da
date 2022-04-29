@@ -22,7 +22,7 @@ class GBAHeader:
     STRUCT_FMT = '<I156s12s4s2s1b1b1b7s1b1b2s'
     def __init__(self, data):
         fields = ('rom_entry_point', 'nintendo_logo',    'game_title',
-                  'game_code',       'maker_code',       'fixed_value', 
+                  'game_code',       'maker_code',       'fixed_value',
                   'main_unit_code',  'device_type',      'reserved',
                   'software_vers',   'complement_check', 'reserved2')
         for idx, field in enumerate(fields):

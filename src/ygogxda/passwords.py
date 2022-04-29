@@ -8,7 +8,7 @@ class YugiohPasswords:
         """ Perform a hash on the input """
         hashed = 0;
         i = 0;
-        while 1: 
+        while 1:
             hashed = raw_input[i] + hashed * 16
             i += 1;
             if (not i < 8): break
@@ -60,8 +60,8 @@ class YugiohPasswords:
             digit = hashed // 16**i;
             hashed = hashed % 16**i
             digits += str(digit)
-        return digits 
-    
+        return digits
+
     def unlock(self, card_id: int) -> str:
         """ Unlocks the password for a given card id """
         expected_hash = self.expected_hash(card_id)

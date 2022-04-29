@@ -1,5 +1,6 @@
 import struct
 import operator
+import numpy as np
 
 c_declare_format = '''\
 const {type} {name}_{address:08x}{size} =
@@ -27,20 +28,32 @@ vectorial_sum = lambda u, v:  tuple(map(operator.add, u, v))
 vectorial_tuple = lambda u: tuple(map(lambda e: (e,), u))
 scalar_vector = lambda s: iter(lambda: s,1)
 
-rgb2gba = lambda red, green, blue: (((red >> 3) & 31) | (((green >> 3) & 31) << 5) | (((blue >> 3) & 31) << 10))
+rgb2gba = lambda red, green, blue:    (((  red >> 3) & 31)
+                                    | (((green >> 3) & 31) <<  5)
+                                    | ((( blue >> 3) & 31) << 10))
 gba2rgb = lambda color:  ((color &  31) << 3,       # red
-                         ((color >>  5) & 31) << 3, # green 
+                         ((color >>  5) & 31) << 3, # green
                          ((color >> 10) & 31) << 3) # blue
 rgb2int = lambda rgb: (rgb[0] << 16) | (rgb[1] << 8) | rgb[2]
 
-charset_decode = lambda buffer: ( 
+charset_decode = lambda buffer: (
         buffer.replace(b'\xf2\xa4',b'\N{GREEK SMALL LETTER ALPHA}') # ɑ
-              .replace(b'\xf0\x80',b'') 
-              .replace(b'\xf0\xf3',b'') 
-              .replace(b'\xf0\xae',b'') 
-              .replace(b'\xf0\x9d',b'') 
+              .replace(b'\xf0\x80',b'')
+              .replace(b'\xf0\xf3',b'')
+              .replace(b'\xf0\xae',b'')
+              .replace(b'\xf0\x9d',b'')
               .replace(b'\x81\xf4',bytes('♪','utf-8'))
               .replace(b'\x00',b'')
               .decode('utf-8'))
 
 text_padding = lambda string, size: bytes(string,'ascii') + b'\x00' * (size - len(string))
+
+split_blocks = lambda array2D, blocks: np.array([
+    np.hsplit(split,blocks[0])
+    for split in np.vsplit(array2D,blocks[1])
+])
+
+join_blocks = lambda array2D, blocks: np.block([
+    [array2D[i,j] for j in range(blocks[1])]
+                  for i in range(blocks[0])
+])

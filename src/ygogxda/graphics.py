@@ -1,8 +1,8 @@
 class YugiohGraphics:
     def __init__(self, bitmaps, palettes):
-        self.bitmaps   = bitmaps 
+        self.bitmaps   = bitmaps
         self.palettes  = palettes
-        
+
     def artworks(self):
         bmp = self.bitmaps.reshape(1201,10,10,8,8)
         pal = self.palettes

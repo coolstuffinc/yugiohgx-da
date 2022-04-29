@@ -6,48 +6,50 @@ from PIL import Image
 
 class YugiohROM:
     # Memory Mapping
-    CARD_TOTAL_NUMBER      = mem_region(0x087a8620,4) # A integer with value 1200
+    CARD_TOTAL_NUMBER = mem_region(0x087a8620,4) # A integer with value 1200
     # Graphics
-    CARD_HIGH_RES_PALETTES = mem_region(0x087aa24c,1201* 128) # 128  B each card palette
-    CARD_HIGH_RES_BITMAPS  = mem_region(0x087cfacc,1201*6400) #  64 KB each card bitmap
-    ACADEMY_LOCATIONS_THUMBS = slice(0x09772e14,0x097d549f)
+    CARD_HIGH_RES_PALETTES     = mem_region(0x087aa24c,1201* 128) # 128  B each card palette
+    CARD_HIGH_RES_BITMAPS      = mem_region(0x087cfacc,1201*6400) #  64 KB each card bitmap
+    ACADEMY_LOCATIONS_THUMBS   = slice(0x09772e14,0x097d549f)
+    CHARACTERS_BITMAPS         = slice(0x091f24dc,0x09250780)
+    CHARACTERS_PALETTES        = slice(0x09250780,0x092515f4)
     # English
     # - string section
-    CARD_NAMES_EN          = slice(0x08f25690,0x08f2a68b) # 0x00, 0x00, Blue...
-    CARD_TEXTS_EN          = slice(0x08f2b950,0x08f58293) # 0x00, 0x00, This lege...
-    CARD_SHOP_PACK_INFO_EN = slice(0x094edd78,0x094eef57) # Basic 1-A, I recom ...
-    TUTORIAL_DIALOGUES_EN  = slice(0x09472826,0x0947eba0) # On the duel screen, ...
-    GAME_UI_STRINGS_EN     = slice(0x093f6df0,0x094280a0)
+    CARD_NAMES_EN              = slice(0x08f25690,0x08f2a68b) # 0x00, 0x00, Blue...
+    CARD_TEXTS_EN              = slice(0x08f2b950,0x08f58293) # 0x00, 0x00, This lege...
+    CARD_SHOP_PACK_INFO_EN     = slice(0x094edd78,0x094eef57) # Basic 1-A, I recom ...
+    TUTORIAL_DIALOGUES_EN      = slice(0x09472826,0x0947eba0) # On the duel screen, ...
+    GAME_UI_STRINGS_EN         = slice(0x093f6df0,0x094280a0)
     # - offsets
-    CARD_NAMES_OFFSETS_EN  = mem_region(0x08f2a68c,1201*4) # 1201 ints (4 Bytes each)
-    CARD_TEXTS_OFFSETS_EN  = mem_region(0x08f58294,1201*4) #
-    GAME_UI_OFFSETS_EN     = mem_region(0x094280b0,4524*4) #
+    CARD_NAMES_OFFSETS_EN      = mem_region(0x08f2a68c,1201*4) # 1201 ints (4 Bytes each)
+    CARD_TEXTS_OFFSETS_EN      = mem_region(0x08f58294,1201*4) #
+    GAME_UI_OFFSETS_EN         = mem_region(0x094280b0,4524*4) #
     # - pointers
-    TUTORIAL_INSTRUCT_EN   = mem_region(0x097fd78c,  68*4) # 68 Pointers to Strings 
-    TUTORIAL_SECTIONS_EN   = mem_region(0x097fd78c,  11*4) # 11 Pointers to Strings 
-    CHARS_FULL_NAMES_EN    = mem_region(0x097f0bc8,  36*4) # 36 Pointers to Strings
-    CHARS_SHORT_NAMES_EN   = mem_region(0x097f0c58,  36*4) # 36 Pointers to Strings
-    PLACES_NAMES_EN        = mem_region(0x097f0ce8,  26*4) # 26 Pointers to Strings
-    DUELIST_TITLES_EN      = mem_region(0x097f0d50,  14*4) # 14 ..
-    ACADEMY_DORMS_EN       = mem_region(0x097f0d88,   3*4) #  3 ..
-    CARD_MONSTER_TYPES_EN  = mem_region(0x097d7b38,  24*4) # 24 ..
-    CARD_MONSTER_ATTRS_EN  = mem_region(0x097d7b9c,   7*4) #  7 ..
-    CARD_TYPES_EN          = mem_region(0x097d7bb8,   7*4) #  7 ..
+    TUTORIAL_INSTRUCT_EN       = mem_region(0x097fd78c, 68*4) # 68 Pointers to Strings
+    TUTORIAL_SECTIONS_EN       = mem_region(0x097fd78c, 11*4) # 11 Pointers to Strings
+    CHARS_FULL_NAMES_EN        = mem_region(0x097f0bc8, 36*4) # 36 Pointers to Strings
+    CHARS_SHORT_NAMES_EN       = mem_region(0x097f0c58, 36*4) # 36 Pointers to Strings
+    DUELIST_TITLES_EN          = mem_region(0x097f0d50, 14*4) # 14 ..
+    ACADEMY_DORMS_EN           = mem_region(0x097f0d88,  3*4) #  3 ..
+    CARD_MONSTER_TYPES_EN      = mem_region(0x097d7b38, 24*4) # 24 ..
+    CARD_MONSTER_ATTRS_EN      = mem_region(0x097d7b9c,  7*4) #  7 ..
+    CARD_TYPES_EN              = mem_region(0x097d7bb8,  7*4) #  7 ..
+    ACADEMY_LOCATIONS_NAMES_EN = mem_region(0x097f0ce8, 26*4) # 26 Pointers to Strings
     # Japanese
     # - string section
-    CARD_NAMES_JP          = slice(0x08f5b180,0x08f61183)  # 0x00, 0x00, ブルーアイズ...
-    CARD_TEXTS_JP          = slice(0)
+    CARD_NAMES_JP              = slice(0x08f5b180,0x08f61183)  # 0x00, 0x00, ブルーアイズ...
+    CARD_TEXTS_JP              = slice(0)
     # - offsets
-    CARD_NAMES_OFFSETS_JP  = mem_region(0x08f59ebc,1201*4) # 1201 ints (4 Bytes each)
-    CARD_TEXTS_OFFSETS_JP  = slice(0)
+    CARD_NAMES_OFFSETS_JP      = mem_region(0x08f59ebc,1201*4) # 1201 ints (4 Bytes each)
+    CARD_TEXTS_OFFSETS_JP      = slice(0)
     # - structs
-    EVENT_NAMES_JP         = mem_region(0x0942c760,71*516) # 71 Structured Data
+    EVENT_NAMES_JP             = mem_region(0x0942c760,71*516) # 71 Structured Data
     # - pointers
-    OPPONENT_NAMES_JP      = mem_region(0x097f468c,36*4)   # 36 Pointers to Strings
-    EXAM_TYPE_JP           = mem_region(0x097f471c, 7*4)   #  7 Pointers to Strings
+    OPPONENT_NAMES_JP          = mem_region(0x097f468c,36*4)   # 36 Pointers to Strings
+    EXAM_TYPE_JP               = mem_region(0x097f471c, 7*4)   #  7 Pointers to Strings
     # DATA
     #
-    CARD_TOKEN_INFO        = slice(0x090a0540,0x090a0610)
+    CARD_TOKEN_INFO            = slice(0x090a0540,0x090a0610)
     # LUT
     # - Ordinal number to id
     CARD_NUMBER_TO_ID      = mem_region(0x087a8624,1201*2) # 1201 words (2 Bytes)
@@ -66,13 +68,13 @@ class YugiohROM:
         self.card_names  = self._read_card_names()
         self.card_texts  = self._read_card_texts()
         self.card_images = self._read_card_artworks()
-        self.card_thumbs = self._read_card_thumbnails()
+        #self.card_thumbs = self._read_card_thumbnails()
         self.passwords   = YugiohPasswords(self._read_card_password_keys())
         card_number_id   = self._read_card_number_to_id()
 
     @property
     def game_title(self):
-        """ Returns the Game Title YUGIOHGXDA """ 
+        """ Returns the Game Title YUGIOHGXDA """
         return charset_decode(self.header.game_title)
 
     @property
@@ -185,20 +187,6 @@ class YugiohROM:
         data = bitmaps.read_array(shape,dtype='B') # words
         return data
 
-    def _read_lo_card_palettes(self):
-        """ Reads palettes for low res card artworks """
-        raise NotImplementedError
-        return
-        palettes = self.rom[0x08f61184:0x08f61184+1201*64] 
-        shape = (1201,64)
-        data = palettes.read_array(shape,dtype='B') # words
-        return data
-
-    def _read_lo_card_bitmaps(self):
-        """ Reads bitmaps for low res card artworks """
-        raise NotImplementedError
-        return 
-
     def _read_card_artworks(self):
         """ Returns a generator with artwork for each card """
         hires_bmp = self._read_hi_card_bitmaps()
@@ -208,25 +196,93 @@ class YugiohROM:
         for idx in range(self.num_cards):
             bitmap  = bmp[idx]
             palette = pal[idx]
-            blocks = [[bitmap[i,j] for j in range(10)]
-                                   for i in range(10)]
-            array = np.block(blocks)
+            array = join_blocks(bitmap,(10,10))
             image = Image.fromarray(array)
             image.putpalette(palette, rawmode="RGB;15")
             yield image
+
+    def _read_lo_card_palettes(self):
+        """ Reads palettes for low res card artworks """
+        raise NotImplementedError
+        return
+
+    def _read_lo_card_bitmaps(self):
+        """ Reads bitmaps for low res card artworks """
+        raise NotImplementedError
+        return
 
     def _read_card_thumbnails(self):
         """ Returns a generator with thumbnails for each card """
         raise NotImplementedError
         return
-        # FIXME under construction: showing the palettes
-        #low_bmp = self._read_lo_card_bitmaps()
-        #low_pal = self._read_lo_card_palettes()
-        #bmp = hires_bmp.reshape(1201,10,10,8,8)
-        pal = low_pal.reshape(1201,8,8)
-        for idx in range(self.num_cards):
-            palette = pal[idx]
-            image = Image.new("RGB",palette.shape)
-            data = tuple(map(gba2rgb,palette.flatten()))
-            image.putdata(data)
-            yield image
+
+    def _read_duelists_sprites(self):
+        mem_bitmaps  = self.rom[YugiohROM.CHARACTERS_BITMAPS]
+        mem_palettes = self.rom[YugiohROM.CHARACTERS_PALETTES]
+        p_duelist_bitmaps = mem_bitmaps.read_pointers(29)
+        p_duelist_palette = mem_palettes.read_pointers(29)
+
+        duelist_bitmaps = []
+        for p_duelist in p_duelist_bitmaps:
+            p_variations = self.rom.read_pointers(5, offset=p_duelist)
+            variations = []
+            for p_bitmap in p_variations:
+                bitmap = self.rom.read_array(4096, offset=p_bitmap)
+                variations.append(bitmap)
+            duelist_bitmaps.append(variations)
+
+        duelist_palette = []
+        for p_palette in p_duelist_palette:
+            palette = self.rom.read_array(128, offset=p_palette)
+            duelist_palette.append(palette)
+
+        for variations, palette  in zip(duelist_bitmaps, duelist_palette):
+            images = []
+            for variation in variations:
+                array = variation.reshape(8,8,8,8)
+                array = join_blocks(array,(8,8))
+                array = array.reshape(64,64)
+                image = Image.fromarray(array)
+                image.putpalette(palette, rawmode="RGB;15")
+                images.append(image)
+            yield images
+
+    def _read_places_thumb(self):
+        memory = self.rom[YugiohROM.ACADEMY_LOCATIONS_THUMBS]
+        # Read the 3 pointers for each period of day variations
+        p_bitmaps  = memory.read_pointers(3)
+        p_palettes = memory.read_pointers(3,offset=3*4)
+
+        timeofday_bmps = []
+        # Loop over the day variations and handle the bitmaps
+        for p_bitmap in p_bitmaps:
+            p_locations = self.rom.read_pointers(26,offset=p_bitmap)
+            locations_bmps = []
+            # Loop over each Academy Location and extract a bitmap
+            for p_ in p_locations:
+                # The image has a header with
+                wtfisthis = self.rom.read_bytes(4, offset=p_)
+                bitmap = self.rom.read_array(6144, offset=p_+4)
+                locations_bmps.append(bitmap)
+            timeofday_bmps.append(locations_bmps)
+
+        timeofday_pals = []
+        # Loop over the day variations and handle their palettes
+        for p_palette in p_palettes:
+            p_locations = self.rom.read_pointers(26,offset=p_palette)
+            locations_pals = []
+            # Loop over each Academy Location and extract a palette
+            for p_ in p_locations:
+                palette = self.rom.read_array(128, offset=p_)
+                locations_pals.append(palette)
+            timeofday_pals.append(locations_pals)
+
+        for bitmaps, palettes in zip(timeofday_bmps,timeofday_pals):
+            images = []
+            for bmp, pal in zip(bitmaps,palettes):
+                array = bmp.reshape(8,12,8,8)
+                array = join_blocks(array, (8,12))
+                image = Image.fromarray(array)
+                image.putpalette(pal, rawmode="RGB;15")
+                images.append(image)
+            yield images

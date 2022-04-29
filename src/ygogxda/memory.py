@@ -7,12 +7,12 @@ BASE_ADDRESS = 0x08000000
 mem_region = lambda address, size: slice(address,address+size)
 # Offset region by  base address (REAL)
 mem_offset = lambda base_address, key: \
-                    slice(key.start+base_address, 
+                    slice(key.start+base_address,
                           key.stop +base_address,
                           key.step)
 # Real (Ex. [0800:0000h:0800:1000h]) to Virtual ([0:1000])
 real_to_virt = lambda key: mem_offset(-BASE_ADDRESS,key)
-virt_to_real = lambda key: mem_offset(+BASE_ADDRESS,key) 
+virt_to_real = lambda key: mem_offset(+BASE_ADDRESS,key)
 is_virt_address = lambda region, key: ((key.start or 0) - region.start) < 0
 is_real_address = lambda region, key: not is_virt_address(region,key)
 
@@ -28,7 +28,12 @@ class MemoryEmulator:
         if p_size == 8:
             self._ptr_pfx = 'Q'
         self.endian = endian
-        self.region = region if region != None else mem_region(BASE_ADDRESS,len(self._payload))
+        # Must always be a REAL addressing
+        # (not ranging from 0 to len(payload))
+        if region != None:
+            self.region = region
+        else:
+            self.region = mem_region(BASE_ADDRESS,len(self._payload))
 
     def read(self,filename):
         with open(filename,'rb') as f:
@@ -43,17 +48,24 @@ class MemoryEmulator:
         return self.region.stop - self.region.start
 
     def __getitem__(self, key):
-        virt_key = key if is_virt_address(self.region,key) \
-                  else real_to_virt(key)
-        real_key = key if is_real_address(self.region,key) \
-                  else virt_to_real(key)
-        return MemoryEmulator(self._payload[virt_key],
-                  region=real_key,
-                  p_size=self.pointer_size,
-                  endian=self.endian)
+        if type(key) is slice:
+            if key.stop is None:
+                key = slice(key.start,self.region.stop)
+            virt_key = key if is_virt_address(self.region,key) \
+                           else real_to_virt(key)
+            real_key = key if is_real_address(self.region,key) \
+                           else virt_to_real(key)
+            return MemoryEmulator(self._payload[virt_key],
+                    region=real_key,
+                    p_size=self.pointer_size,
+                    endian=self.endian)
+        elif type(key) is tuple:
+            key = mem_region(key[0],key[1])
+            return self[key]
 
     def __setitem__(self, key, value):
-        virt_key = key if is_virt_address(self.region,key) else real_to_virt(key)
+        virt_key = key if is_virt_address(self.region,key) \
+                       else real_to_virt(key)
         self._payload[virt_key] = value
 
     def read_pointers(self, number=1, **kwargs):
@@ -78,7 +90,7 @@ class MemoryEmulator:
     def read_integer(self, number=1, dtype='I', **kwargs):
         fmt     = f'{self.endian}{number}{dtype}'
         integers = self.read_struct(fmt, **kwargs)
-        return integers 
+        return integers
 
     def read_bytes(self, size, offset=0):
         key = mem_region(offset,size)
@@ -86,5 +98,5 @@ class MemoryEmulator:
                        else real_to_virt(key)
         payload = self._payload[virt_key]
         return payload
-        
+
 
