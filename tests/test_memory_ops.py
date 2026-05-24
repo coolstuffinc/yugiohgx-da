@@ -1,4 +1,5 @@
 import itertools
+import csv
 import os
 import struct
 import sys
@@ -22,11 +23,13 @@ from ygogxda.memory_ops import (
     extract_card_artworks,
     extract_duelist_sprites,
     extract_location_thumbs,
+    extract_string_table,
     get_string_entry,
     patch_card_image,
     patch_duelist_sprite,
     patch_location_thumb,
     patch_string_entry,
+    patch_string_table_bulk,
 )
 from ygogxda.rom import YugiohROM
 from ygogxda.utils import split_blocks
@@ -323,11 +326,12 @@ class TestMemoryOperations(unittest.TestCase):
         parser = build_parser()
 
         args = parser.parse_args(
-            ["sprites", "extract-duelists", "--rom", "game.gba", "--output-dir", "out"]
+            ["sprites", "extract", "duelist", "--rom", "game.gba", "--output-dir", "out"]
         )
 
         self.assertEqual(args.command, "sprites")
-        self.assertEqual(args.sprites_command, "extract-duelists")
+        self.assertEqual(args.sprites_action, "extract")
+        self.assertEqual(args.sprites_resource, "duelist")
         self.assertEqual(args.rom, "game.gba")
         self.assertEqual(args.output_dir, "out")
         self.assertTrue(callable(args.func))
@@ -343,7 +347,8 @@ class TestMemoryOperations(unittest.TestCase):
         args = parser.parse_args(
             [
                 "sprites",
-                "patch-location",
+                "patch",
+                "location-thumb",
                 "--rom",
                 "game.gba",
                 "--period",
@@ -358,7 +363,8 @@ class TestMemoryOperations(unittest.TestCase):
         )
 
         self.assertEqual(args.command, "sprites")
-        self.assertEqual(args.sprites_command, "patch-location")
+        self.assertEqual(args.sprites_action, "patch")
+        self.assertEqual(args.sprites_resource, "location-thumb")
         with patch("ygogxda.cli.patch_location_thumb") as patch_location_thumb_mock:
             result = args.func(args)
 
@@ -373,7 +379,8 @@ class TestMemoryOperations(unittest.TestCase):
         args = parser.parse_args(
             [
                 "sprites",
-                "patch-card",
+                "patch",
+                "card",
                 "--rom",
                 "game.gba",
                 "--card-id",
@@ -386,11 +393,149 @@ class TestMemoryOperations(unittest.TestCase):
         )
 
         self.assertEqual(args.command, "sprites")
-        self.assertEqual(args.sprites_command, "patch-card")
+        self.assertEqual(args.sprites_action, "patch")
+        self.assertEqual(args.sprites_resource, "card")
         with patch("ygogxda.cli.patch_card_image") as patch_card_image_mock:
             result = args.func(args)
 
         patch_card_image_mock.assert_called_once_with("game.gba", 2, "card.png", "patched.gba")
+        self.assertEqual(result, 0)
+
+    def test_extract_string_table_writes_csv(self):
+        source = self._write_temp_rom()
+        output = self._make_temp_path(".csv")
+        try:
+            extract_string_table(source, "card_names_en", output_file=output)
+            with open(output, newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+            self.assertEqual(len(rows), 1200)
+            self.assertEqual(rows[0]["index"], "0")
+            self.assertEqual(rows[0]["text"], "A")
+            self.assertEqual(rows[25]["text"], "Z")
+        finally:
+            os.unlink(source)
+            os.unlink(output)
+
+    def test_extract_string_table_single_index(self):
+        source = self._write_temp_rom()
+        output = self._make_temp_path(".csv")
+        try:
+            extract_string_table(source, "card_names_en", output_file=output, index=3)
+            with open(output, newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["index"], "3")
+            self.assertEqual(rows[0]["text"], "D")
+        finally:
+            os.unlink(source)
+            os.unlink(output)
+
+    def test_patch_string_table_bulk_roundtrip(self):
+        source = self._write_temp_rom()
+        csv_path = self._make_temp_path(".csv")
+        output = self._make_temp_path(".gba")
+        try:
+            # Replace entries 0 and 1 with same-length values
+            with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["index", "text"])
+                writer.writerow([0, "Z"])
+                writer.writerow([1, "Y"])
+
+            patch_string_table_bulk(source, "card_names_en", csv_path, output)
+
+            self.assertEqual(get_string_entry(output, "card_names_en", 0), "Z")
+            self.assertEqual(get_string_entry(output, "card_names_en", 1), "Y")
+            self.assertEqual(get_string_entry(output, "card_names_en", 2), "C")
+        finally:
+            os.unlink(source)
+            os.unlink(csv_path)
+            os.unlink(output)
+
+    def test_patch_string_table_bulk_overflow_raises(self):
+        source = self._write_temp_rom()
+        csv_path = self._make_temp_path(".csv")
+        output = self._make_temp_path(".gba")
+        try:
+            # Writing a 20-char string to every entry produces 1200 * 21 = 25 200 bytes,
+            # which exceeds the 20 475-byte CARD_NAMES_EN region.
+            long_text = "A" * 20
+            with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["index", "text"])
+                for i in range(1200):
+                    writer.writerow([i, long_text])
+
+            with self.assertRaises(ValueError):
+                patch_string_table_bulk(source, "card_names_en", csv_path, output)
+        finally:
+            os.unlink(source)
+            os.unlink(csv_path)
+            if os.path.exists(output):
+                os.unlink(output)
+
+    def test_cli_strings_extract(self):
+        parser = build_parser()
+
+        args = parser.parse_args(
+            ["strings", "extract", "--rom", "game.gba", "--table", "card_names_en", "--output", "names.csv"]
+        )
+
+        self.assertEqual(args.command, "strings")
+        self.assertEqual(args.strings_action, "extract")
+        self.assertEqual(args.table, "card_names_en")
+        self.assertEqual(args.output, "names.csv")
+        self.assertTrue(callable(args.func))
+
+    def test_cli_strings_patch_single(self):
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "strings", "patch",
+                "--rom", "game.gba",
+                "--table", "card_names_en",
+                "--index", "5",
+                "--text", "NewName",
+                "--output", "patched.gba",
+            ]
+        )
+
+        self.assertEqual(args.command, "strings")
+        self.assertEqual(args.strings_action, "patch")
+        self.assertEqual(args.table, "card_names_en")
+        self.assertEqual(args.index, 5)
+        self.assertEqual(args.text, "NewName")
+        self.assertTrue(callable(args.func))
+        with patch("ygogxda.cli.patch_string_entry") as mock_patch:
+            result = args.func(args)
+
+        mock_patch.assert_called_once_with("game.gba", "card_names_en", 5, "NewName", "patched.gba")
+        self.assertEqual(result, 0)
+
+    def test_cli_strings_patch_csv(self):
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "strings", "patch",
+                "--rom", "game.gba",
+                "--table", "card_names_en",
+                "--csv", "names.csv",
+                "--output", "patched.gba",
+            ]
+        )
+
+        self.assertEqual(args.command, "strings")
+        self.assertEqual(args.strings_action, "patch")
+        self.assertEqual(args.csv_file, "names.csv")
+        self.assertTrue(callable(args.func))
+        with patch("ygogxda.cli.patch_string_table_bulk") as mock_bulk:
+            result = args.func(args)
+
+        mock_bulk.assert_called_once_with("game.gba", "card_names_en", "names.csv", "patched.gba")
         self.assertEqual(result, 0)
 
 

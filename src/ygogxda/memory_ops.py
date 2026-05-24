@@ -1,10 +1,12 @@
+import csv
+import sys
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
 from .memory import MemoryEmulator, mem_region
-from .memory_map import list_memory_paths, resolve_memory_path, resolve_string_table
+from .memory_map import CANONICAL_STRING_TABLES, list_memory_paths, resolve_memory_path, resolve_string_table
 from .rom import YugiohROM
 from .utils import rgb2gba, split_blocks
 
@@ -192,3 +194,105 @@ def get_string_entry(rom_file, table_name, index):
     stop = strings_region.start + int(offsets[index + 1])
     payload = memory[mem_region(start, stop - start)].read_bytes(stop - start)
     return payload.split(b"\x00", 1)[0].decode(table.encoding)
+
+
+def extract_string_table(rom_file, table_name, output_file=None, index=None):
+    """Extract string table entries to CSV.
+
+    Writes to *output_file* when provided, otherwise to stdout.  Pass *index*
+    to restrict output to a single entry (requires *table_name*).
+    """
+    memory = MemoryEmulator(rom_file)
+    table = resolve_string_table(table_name)
+    strings_region = resolve_memory_path(table.strings_path).region
+    offsets_region = resolve_memory_path(table.offsets_path).region
+
+    offsets_memory = memory[offsets_region]
+    num_offsets = len(offsets_memory) // OFFSET_SIZE
+    num_entries = num_offsets - 1
+    offsets = offsets_memory.read_array(num_offsets, dtype="I")
+
+    def _read_entry(i):
+        start = strings_region.start + int(offsets[i])
+        stop = strings_region.start + int(offsets[i + 1])
+        payload = memory[mem_region(start, stop - start)].read_bytes(stop - start)
+        return payload.split(b"\x00", 1)[0].decode(table.encoding)
+
+    if index is not None:
+        if index < 0 or index >= num_entries:
+            raise IndexError(f"index must be between 0 and {num_entries - 1}")
+        rows = [(index, _read_entry(index))]
+    else:
+        rows = [(i, _read_entry(i)) for i in range(num_entries)]
+
+    if output_file is None:
+        writer = csv.writer(sys.stdout)
+        writer.writerow(["index", "text"])
+        writer.writerows(rows)
+    else:
+        with open(output_file, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["index", "text"])
+            writer.writerows(rows)
+
+
+def patch_string_table_bulk(rom_file, table_name, csv_file, output_rom):
+    """Patch multiple string table entries from a CSV, rebuilding the offset table.
+
+    The CSV must have *index* and *text* columns.  Only listed entries are
+    modified; all others keep their current values.  Offsets are regenerated
+    from scratch so entries may borrow space from each other as long as the
+    total encoded size (including null terminators) fits inside the original
+    string region.
+    """
+    memory = MemoryEmulator(rom_file)
+    table = resolve_string_table(table_name)
+    strings_path_obj = resolve_memory_path(table.strings_path)
+    strings_region = strings_path_obj.region
+    offsets_region = resolve_memory_path(table.offsets_path).region
+    region_capacity = strings_path_obj.size
+
+    offsets_memory = memory[offsets_region]
+    num_offsets = len(offsets_memory) // OFFSET_SIZE
+    num_entries = num_offsets - 1
+    offsets = offsets_memory.read_array(num_offsets, dtype="I")
+
+    # Read all current entries
+    entries = []
+    for i in range(num_entries):
+        start = strings_region.start + int(offsets[i])
+        stop = strings_region.start + int(offsets[i + 1])
+        payload = memory[mem_region(start, stop - start)].read_bytes(stop - start)
+        entries.append(payload.split(b"\x00", 1)[0].decode(table.encoding))
+
+    # Apply CSV overrides
+    with open(csv_file, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            idx = int(row["index"])
+            if idx < 0 or idx >= num_entries:
+                raise IndexError(f"CSV index {idx} out of range 0..{num_entries - 1}")
+            entries[idx] = row["text"]
+
+    # Encode all entries (null-terminated)
+    encoded = [text.encode(table.encoding) + b"\x00" for text in entries]
+    new_total = sum(len(e) for e in encoded)
+    if new_total > region_capacity:
+        raise ValueError(
+            f"Rebuilt string table ({new_total} bytes) exceeds region capacity"
+            f" ({region_capacity} bytes)"
+        )
+
+    # Rebuild offsets
+    new_offsets = []
+    pos = 0
+    for e in encoded:
+        new_offsets.append(pos)
+        pos += len(e)
+    new_offsets.append(pos)  # sentinel
+
+    # Write blob padded to original region size, then the new offset table
+    blob = b"".join(encoded) + b"\x00" * (region_capacity - new_total)
+    memory[strings_region] = blob
+    memory[offsets_region] = np.asarray(new_offsets, dtype="<u4").tobytes()
+    memory.write(output_rom)
