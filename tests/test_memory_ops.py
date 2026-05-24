@@ -198,7 +198,13 @@ class TestMemoryOperations(unittest.TestCase):
             self.assertEqual(bytes(bitmap_region.read_bytes(4096)), expected_bitmap)
             self.assertNotEqual(bytes(palette_region.read_bytes(128)), b"\x00" * 128)
             sprite_image = list(rom.duelist_sprites())[0][1]
-            self.assertEqual(list(sprite_image.convert("RGB").getdata()), list(Image.open(image_path).convert("RGB").getdata()))
+            with Image.open(image_path) as input_image:
+                self.assertTrue(
+                    np.array_equal(
+                        np.asarray(sprite_image.convert("RGB")),
+                        np.asarray(input_image.convert("RGB")),
+                    )
+                )
         finally:
             os.unlink(source)
             os.unlink(output)
@@ -222,7 +228,13 @@ class TestMemoryOperations(unittest.TestCase):
             self.assertEqual(bytes(bitmap_region.read_bytes(6144)), expected_bitmap)
             self.assertNotEqual(bytes(palette_region.read_bytes(128)), b"\x00" * 128)
             thumb_image = list(rom.location_thumbs())[2][2]
-            self.assertEqual(list(thumb_image.convert("RGB").getdata()), list(Image.open(image_path).convert("RGB").getdata()))
+            with Image.open(image_path) as input_image:
+                self.assertTrue(
+                    np.array_equal(
+                        np.asarray(thumb_image.convert("RGB")),
+                        np.asarray(input_image.convert("RGB")),
+                    )
+                )
         finally:
             os.unlink(source)
             os.unlink(output)

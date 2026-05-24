@@ -31,7 +31,10 @@ def _convert_palette_to_gba(image, palette_entries):
     palette = (image.getpalette() or [])[: palette_entries * 3]
     palette += [0] * (palette_entries * 3 - len(palette))
     colors = np.asarray(palette, dtype=np.uint8).reshape(palette_entries, 3)
-    gba_palette = np.asarray([rgb2gba(*rgb) for rgb in colors], dtype="<u2")
+    gba_palette = np.asarray(
+        [rgb2gba(int(red), int(green), int(blue)) for red, green, blue in colors],
+        dtype="<u2",
+    )
     return gba_palette.tobytes()
 
 
