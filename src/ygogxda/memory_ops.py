@@ -72,6 +72,7 @@ def _patch_indexed_image(bitmap_region, palette_region, pixels, palette_bytes, b
 
 
 def _decode_string_payload(payload, encoding):
+    """Decode a null-terminated string payload with compatibility fallbacks."""
     raw = payload.split(b"\x00", 1)[0]
     try:
         return raw.decode(encoding)

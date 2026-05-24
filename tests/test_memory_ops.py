@@ -444,7 +444,8 @@ class TestMemoryOperations(unittest.TestCase):
             extract_string_table(source, "card_names_en", output_file=output, index=0)
             with open(output, newline="", encoding="utf-8") as f:
                 rows = list(csv.DictReader(f))
-            self.assertEqual(rows[0]["text"], "\ufffd")
+            replacement_char = "\ufffd"
+            self.assertEqual(rows[0]["text"], replacement_char)
         finally:
             os.unlink(source)
             os.unlink(output)
