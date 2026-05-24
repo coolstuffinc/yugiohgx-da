@@ -185,8 +185,8 @@ class TestMemoryOperations(unittest.TestCase):
         output = self._make_temp_path(".gba")
         image_path = self._make_temp_path(".png")
         try:
-            pixels = (np.arange(64 * 64, dtype=np.uint8).reshape(64, 64) % 4)
             colors = [(0, 0, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
+            pixels = np.arange(64 * 64, dtype=np.uint8).reshape(64, 64) % len(colors)
             save_paletted_image(image_path, (64, 64), colors, pixels)
 
             patch_duelist_sprite(source, 0, 1, image_path, output)
@@ -215,8 +215,8 @@ class TestMemoryOperations(unittest.TestCase):
         output = self._make_temp_path(".gba")
         image_path = self._make_temp_path(".png")
         try:
-            pixels = (np.arange(64 * 96, dtype=np.uint8).reshape(64, 96) % 4)
             colors = [(0, 0, 0), (255, 255, 0), (255, 0, 255), (0, 255, 255)]
+            pixels = np.arange(64 * 96, dtype=np.uint8).reshape(64, 96) % len(colors)
             save_paletted_image(image_path, (96, 64), colors, pixels)
 
             patch_location_thumb(source, "night", 2, image_path, output)

@@ -49,7 +49,7 @@ def _load_indexed_image(image_file, size, palette_entries):
         indexed = image.convert("RGB").quantize(colors=palette_entries)
 
     pixels = np.asarray(indexed, dtype=np.uint8)
-    max_index = int(pixels.max()) if pixels.size else 0
+    max_index = int(pixels.max())
     if max_index >= palette_entries:
         indexed = indexed.convert("RGB").quantize(colors=palette_entries)
         pixels = np.asarray(indexed, dtype=np.uint8)
