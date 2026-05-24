@@ -59,6 +59,16 @@ CANONICAL_MEMORY_PATHS = {
         YugiohROM.CARD_NAMES_OFFSETS_EN,
         "English card names offset table",
     ),
+    "strings.cards.names.jp": MemoryPath(
+        "strings.cards.names.jp",
+        YugiohROM.CARD_NAMES_JP,
+        "Japanese card names string table payload",
+    ),
+    "strings.cards.names.jp.offsets": MemoryPath(
+        "strings.cards.names.jp.offsets",
+        YugiohROM.CARD_NAMES_OFFSETS_JP,
+        "Japanese card names offset table",
+    ),
     "strings.cards.texts.en": MemoryPath(
         "strings.cards.texts.en",
         YugiohROM.CARD_TEXTS_EN,
@@ -88,6 +98,13 @@ CANONICAL_STRING_TABLES = {
         "strings.cards.names.en",
         "strings.cards.names.en.offsets",
         "Card names in English",
+    ),
+    "card_names_jp": StringTable(
+        "card_names_jp",
+        "strings.cards.names.jp",
+        "strings.cards.names.jp.offsets",
+        "Card names in Japanese",
+        encoding="japanese_rom",
     ),
     "card_texts_en": StringTable(
         "card_texts_en",

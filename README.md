@@ -56,6 +56,18 @@ Run the CLI:
 uv run ygogxda memory paths
 ```
 
+Run the integration test with a local ROM (optional):
+
+```bash
+YGOGXDA_TEST_ROM=/absolute/path/to/game.gba uv run python -m unittest tests.test_rom_integration -v
+```
+
+Or pass it as an argument when executing the test module directly:
+
+```bash
+uv run python tests/test_rom_integration.py --rom /absolute/path/to/game.gba -v
+```
+
 Extract card artworks:
 
 ```bash

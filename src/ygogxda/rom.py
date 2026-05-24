@@ -1,7 +1,8 @@
-from .memory    import *
-from .utils     import *
-from .gba       import GBAHeader
-from .passwords import YugiohPasswords
+from .memory             import *
+from .utils              import *
+from .gba                import GBAHeader
+from .passwords          import YugiohPasswords
+from .japanese_encoding  import decode as japanese_decode
 from PIL import Image
 
 class YugiohROM:
@@ -66,8 +67,9 @@ class YugiohROM:
         self.rom        = MemoryEmulator(payload)
         self.header     = GBAHeader(self._read_header())
         self.num_cards  = self._read_card_total_number() # This is used afterwards
-        self.card_names  = self._read_card_names()
-        self.card_texts  = self._read_card_texts()
+        self.card_names    = self._read_card_names()
+        self.card_texts    = self._read_card_texts()
+        self.card_names_jp = self._read_card_names_jp()
         self.card_images = self._read_card_artworks()
         #self.card_thumbs = self._read_card_thumbnails()
         self.passwords   = YugiohPasswords(self._read_card_password_keys())
@@ -140,7 +142,7 @@ class YugiohROM:
         memory = self.rom[string_start:string_stop]
         return memory
 
-    def _read_all_strings(self, string_region, offset_region, offset_size=4):
+    def _read_all_strings(self, string_region, offset_region, offset_size=4, decoder=charset_decode):
         """ Returns a list with all strings given a offset table """
         mem_strings = self.rom[string_region]
         mem_offsets = self.rom[offset_region]
@@ -152,7 +154,7 @@ class YugiohROM:
         strings = []
         for offset, size in zip(offsets,sizes):
             data = mem_strings.read_struct(f'<{size}s', offset=offset)
-            string = charset_decode(data)
+            string = decoder(data)
             strings.append(string)
         return strings
 
@@ -181,6 +183,12 @@ class YugiohROM:
         strings = YugiohROM.CARD_NAMES_EN
         offsets = YugiohROM.CARD_NAMES_OFFSETS_EN
         return self._read_all_strings(strings,offsets)
+
+    def _read_card_names_jp(self):
+        """ Returns a list with the japanese card names """
+        strings = YugiohROM.CARD_NAMES_JP
+        offsets = YugiohROM.CARD_NAMES_OFFSETS_JP
+        return self._read_all_strings(strings, offsets, decoder=japanese_decode)
 
     def _read_card_texts(self):
         """ Returns a list with all english card texts """
