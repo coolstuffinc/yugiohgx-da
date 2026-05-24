@@ -1,5 +1,5 @@
-from PIL import Image
 import numpy as np
+from PIL import Image
 
 from .memory import MemoryEmulator, mem_region
 from .memory_map import list_memory_paths, resolve_memory_path, resolve_string_table
@@ -59,8 +59,8 @@ def patch_string_entry(rom_file, table_name, index, text, output_rom):
     encoded = text.encode(table.encoding)
     if len(encoded) + 1 > capacity:
         raise ValueError(
-            f"Text is too long for entry {index} in {table_name} "
-            f"(max {capacity - 1} bytes)"
+            f"Text exceeds capacity for entry {index} in {table_name} "
+            f"(maximum {capacity - 1} bytes)"
         )
 
     patched = encoded + b"\x00" + b"\x00" * (capacity - len(encoded) - 1)

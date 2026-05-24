@@ -79,6 +79,6 @@ def main(argv=None):
         return 1
     try:
         return args.func(args)
-    except Exception as exc:  # noqa: BLE001
+    except (KeyError, ValueError, IndexError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
