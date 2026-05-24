@@ -5,6 +5,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -598,18 +599,15 @@ class TestMemoryOperations(unittest.TestCase):
 
 class TestCanonicalOutputPath(unittest.TestCase):
     def test_appends_extracted_suffix(self):
-        from pathlib import Path
         result = canonical_output_path("ygogxda.gba")
         self.assertEqual(result.name, "ygogxda.gba.extracted")
 
     def test_preserves_parent_directory(self):
-        from pathlib import Path
         result = canonical_output_path("/some/path/game.gba")
         self.assertEqual(result.parent, Path("/some/path"))
         self.assertEqual(result.name, "game.gba.extracted")
 
     def test_subdir_constants_are_under_sprites(self):
-        from pathlib import Path
         self.assertEqual(str(SUBDIR_CARDS), str(Path("sprites") / "cards"))
         self.assertEqual(str(SUBDIR_DUELISTS), str(Path("sprites") / "duelists"))
         self.assertEqual(str(SUBDIR_LOCATIONS), str(Path("sprites") / "locations"))
