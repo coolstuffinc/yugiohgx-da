@@ -62,7 +62,8 @@ class YugiohROM:
     LICENSED_BY_2 = mem_region(0x097d5f24,21)
 
     def __init__(self, filename, memory_map=None):
-        self.rom        = MemoryEmulator(filename)
+        payload = memory_map if memory_map is not None else filename
+        self.rom        = MemoryEmulator(payload)
         self.header     = GBAHeader(self._read_header())
         self.num_cards  = self._read_card_total_number() # This is used afterwards
         self.card_names  = self._read_card_names()
