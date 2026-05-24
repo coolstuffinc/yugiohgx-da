@@ -8,7 +8,7 @@ from ygogxda.japanese_encoding import decode, encode
 
 
 # ROM bytes for ブルーアイズ・ホワイト・ドラゴン (Blue-Eyes White Dragon)
-# Extracted from japanese_encondings.py (big-endian byte order).
+# Extracted from src/japanese_encondings.py (big-endian byte order).
 _BLUE_EYES_BYTES = (
     0xF284F299F08BF1D0F1D2F1E8F084F289F29DF1D2F1F6F084F1F7F297F1E2F2A1
     .to_bytes(32, 'big')

@@ -44,7 +44,12 @@ def encode(text: str) -> bytes:
                 rom += 0x80
             result.append((rom >> 8) & 0xFF)
             result.append(rom & 0xFF)
+        elif ord(char) < 0x80:
+            # ASCII: single-byte passthrough
+            result.append(ord(char))
         else:
+            # Other Unicode characters (e.g. kanji) whose ROM encoding is not
+            # yet known are emitted as UTF-8 as a best-effort fallback.
             result.extend(char.encode('utf-8'))
     return bytes(result)
 
@@ -79,7 +84,9 @@ def decode(data: bytes) -> str:
             # Unknown prefix-page sequence; skip both bytes.
             i += 2
             continue
-        # ASCII / UTF-8 passthrough
+        # Single-byte passthrough: the ROM stores ASCII characters as-is.
+        # Multi-byte UTF-8 sequences are not expected in ROM Japanese text;
+        # each non-prefix byte is treated as a standalone ASCII character.
         result.append(chr(byte))
         i += 1
     return ''.join(result)
