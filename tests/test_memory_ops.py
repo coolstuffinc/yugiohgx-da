@@ -209,6 +209,11 @@ class TestMemoryOperations(unittest.TestCase):
         self.assertEqual(args.rom, "game.gba")
         self.assertEqual(args.output_dir, "out")
         self.assertTrue(callable(args.func))
+        with patch("ygogxda.cli.extract_duelist_sprites") as extract_duelist_sprites_mock:
+            result = args.func(args)
+
+        extract_duelist_sprites_mock.assert_called_once_with("game.gba", "out")
+        self.assertEqual(result, 0)
 
 
 if __name__ == "__main__":

@@ -121,8 +121,7 @@ def _some_4x8_digits_and_icons(ygo):
 def main():
     ygo = YugiohROM(ROM_FILENAME)
     assert(ygo.game_title == 'YUGIOHGXDA')
-    assert(ygo.game_code == 'BYGE'
-        or ygo.game_code == 'BYGP')
+    assert ygo.game_code in ('BYGE', 'BYGP')
 
     example_patch_card(ygo)
     example_password_handling(ygo)
