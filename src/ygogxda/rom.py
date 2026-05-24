@@ -96,9 +96,23 @@ class YugiohROM:
 
     def card_image(self, card_id):
         """ Returns memory region for a card artwork """
-        start = YugiohROM.CARD_HIGH_RES_BITMAPS.start
-        card_bitmap = self.rom[start+6400*card_id:start+6400*(card_id+1)]
-        return card_bitmap
+        return self.card_artwork_bitmap(card_id)
+
+    def card_artwork_bitmap(self, card_id):
+        num_cards = (YugiohROM.CARD_HIGH_RES_BITMAPS.stop - YugiohROM.CARD_HIGH_RES_BITMAPS.start) // 6400
+        if card_id < 0 or card_id >= num_cards:
+            raise IndexError(f"card_id must be between 0 and {num_cards - 1}")
+
+        start = YugiohROM.CARD_HIGH_RES_BITMAPS.start + 6400 * card_id
+        return self.rom[start, 6400]
+
+    def card_artwork_palette(self, card_id):
+        num_cards = (YugiohROM.CARD_HIGH_RES_PALETTES.stop - YugiohROM.CARD_HIGH_RES_PALETTES.start) // 128
+        if card_id < 0 or card_id >= num_cards:
+            raise IndexError(f"card_id must be between 0 and {num_cards - 1}")
+
+        start = YugiohROM.CARD_HIGH_RES_PALETTES.start + 128 * card_id
+        return self.rom[start, 128]
 
     def card_text(self, card_id):
         """ Returns memory region for a card text """
@@ -217,7 +231,7 @@ class YugiohROM:
         raise NotImplementedError
         return
 
-    def _read_duelists_sprites(self):
+    def duelist_sprites(self):
         mem_bitmaps  = self.rom[YugiohROM.CHARACTERS_BITMAPS]
         mem_palettes = self.rom[YugiohROM.CHARACTERS_PALETTES]
         p_duelist_bitmaps = mem_bitmaps.read_pointers(29)
@@ -248,7 +262,27 @@ class YugiohROM:
                 images.append(image)
             yield images
 
-    def _read_places_thumb(self):
+    def duelist_sprite_bitmap(self, duelist_index, variation_index):
+        mem_bitmaps = self.rom[YugiohROM.CHARACTERS_BITMAPS]
+        p_duelist_bitmaps = mem_bitmaps.read_pointers(29)
+        if duelist_index < 0 or duelist_index >= len(p_duelist_bitmaps):
+            raise IndexError(f"duelist_index must be between 0 and {len(p_duelist_bitmaps) - 1}")
+
+        p_variations = self.rom.read_pointers(5, offset=p_duelist_bitmaps[duelist_index])
+        if variation_index < 0 or variation_index >= len(p_variations):
+            raise IndexError(f"variation_index must be between 0 and {len(p_variations) - 1}")
+
+        return self.rom[p_variations[variation_index], 4096]
+
+    def duelist_sprite_palette(self, duelist_index):
+        mem_palettes = self.rom[YugiohROM.CHARACTERS_PALETTES]
+        p_duelist_palette = mem_palettes.read_pointers(29)
+        if duelist_index < 0 or duelist_index >= len(p_duelist_palette):
+            raise IndexError(f"duelist_index must be between 0 and {len(p_duelist_palette) - 1}")
+
+        return self.rom[p_duelist_palette[duelist_index], 128]
+
+    def location_thumbs(self):
         memory = self.rom[YugiohROM.ACADEMY_LOCATIONS_THUMBS]
         # Read the 3 pointers for each period of day variations
         p_bitmaps  = memory.read_pointers(3)
@@ -287,3 +321,27 @@ class YugiohROM:
                 image.putpalette(pal, rawmode="RGB;15")
                 images.append(image)
             yield images
+
+    def location_thumb_bitmap(self, period_index, location_index):
+        memory = self.rom[YugiohROM.ACADEMY_LOCATIONS_THUMBS]
+        p_bitmaps = memory.read_pointers(3)
+        if period_index < 0 or period_index >= len(p_bitmaps):
+            raise IndexError(f"period_index must be between 0 and {len(p_bitmaps) - 1}")
+
+        p_locations = self.rom.read_pointers(26, offset=p_bitmaps[period_index])
+        if location_index < 0 or location_index >= len(p_locations):
+            raise IndexError(f"location_index must be between 0 and {len(p_locations) - 1}")
+
+        return self.rom[p_locations[location_index] + 4, 6144]
+
+    def location_thumb_palette(self, period_index, location_index):
+        memory = self.rom[YugiohROM.ACADEMY_LOCATIONS_THUMBS]
+        p_palettes = memory.read_pointers(3, offset=3 * 4)
+        if period_index < 0 or period_index >= len(p_palettes):
+            raise IndexError(f"period_index must be between 0 and {len(p_palettes) - 1}")
+
+        p_locations = self.rom.read_pointers(26, offset=p_palettes[period_index])
+        if location_index < 0 or location_index >= len(p_locations):
+            raise IndexError(f"location_index must be between 0 and {len(p_locations) - 1}")
+
+        return self.rom[p_locations[location_index], 128]

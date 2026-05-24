@@ -1,20 +1,42 @@
+import itertools
+import csv
 import os
 import struct
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 from PIL import Image
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
+from ygogxda.cli import build_parser
 from ygogxda.memory import MemoryEmulator
 from ygogxda.passwords import YugiohPasswords
 from ygogxda.memory_map import list_memory_paths
-from ygogxda.memory_ops import get_string_entry, patch_card_image, patch_string_entry
+from ygogxda.memory_ops import (
+    CARD_IMAGE_BLOCKS,
+    DUELIST_SPRITE_BLOCKS,
+    LOCATION_THUMB_BLOCKS,
+    extract_card_artworks,
+    extract_duelist_sprites,
+    extract_location_thumbs,
+    extract_string_table,
+    get_string_entry,
+    patch_card_image,
+    patch_duelist_sprite,
+    patch_location_thumb,
+    patch_string_entry,
+    patch_string_table_bulk,
+)
 from ygogxda.rom import YugiohROM
 from ygogxda.utils import split_blocks
+
+
+LOCATION_POINTER_TABLE_HEADER_SIZE = 24
+LOCATION_BITMAP_ENTRY_SIZE = 4 + 6144
 
 
 def write_bytes(payload, real_address, data):
@@ -34,6 +56,9 @@ def build_synthetic_rom():
     required_stops = [
         YugiohROM.CARD_HIGH_RES_BITMAPS.stop,
         YugiohROM.CARD_HIGH_RES_PALETTES.stop,
+        YugiohROM.CHARACTERS_BITMAPS.stop,
+        YugiohROM.CHARACTERS_PALETTES.stop,
+        YugiohROM.ACADEMY_LOCATIONS_THUMBS.stop,
         YugiohROM.CARD_NAMES_OFFSETS_EN.stop,
         YugiohROM.CARD_TEXTS_OFFSETS_EN.stop,
         YugiohROM.CARD_PASSWORD_KEYS.stop,
@@ -76,7 +101,45 @@ def build_synthetic_rom():
     hashed = YugiohPasswords.forward_hash(bytes(int(ch) for ch in password))
     key = hashed ^ YugiohPasswords.padding(1)
     write_u32(payload, YugiohROM.CARD_PASSWORD_KEYS.start + 4, key)
+
+    duelists_table_offset = YugiohROM.CHARACTERS_BITMAPS.start + 29 * 4
+    duelists_bitmap_data_offset = duelists_table_offset + 5 * 4
+    for index in range(29):
+        write_u32(payload, YugiohROM.CHARACTERS_BITMAPS.start + index * 4, duelists_table_offset)
+        write_u32(payload, YugiohROM.CHARACTERS_PALETTES.start + index * 4, YugiohROM.CHARACTERS_PALETTES.start + 29 * 4)
+    for variation in range(5):
+        write_u32(
+            payload,
+            duelists_table_offset + variation * 4,
+            duelists_bitmap_data_offset + variation * 4096,
+        )
+
+    locations_bitmap_table = YugiohROM.ACADEMY_LOCATIONS_THUMBS.start + LOCATION_POINTER_TABLE_HEADER_SIZE
+    locations_palette_table = locations_bitmap_table + 26 * 4
+    locations_bitmap_data = locations_palette_table + 26 * 4
+    locations_palette_data = locations_bitmap_data + 26 * LOCATION_BITMAP_ENTRY_SIZE
+    for period in range(3):
+        write_u32(payload, YugiohROM.ACADEMY_LOCATIONS_THUMBS.start + period * 4, locations_bitmap_table)
+        write_u32(payload, YugiohROM.ACADEMY_LOCATIONS_THUMBS.start + 12 + period * 4, locations_palette_table)
+    for location in range(26):
+        write_u32(
+            payload,
+            locations_bitmap_table + location * 4,
+            locations_bitmap_data + location * LOCATION_BITMAP_ENTRY_SIZE,
+        )
+        write_u32(payload, locations_palette_table + location * 4, locations_palette_data + location * 128)
+
     return payload
+
+
+def save_paletted_image(path, colors, pixels):
+    image = Image.fromarray(np.asarray(pixels, dtype=np.uint8), mode="P")
+    palette = []
+    for color in colors:
+        palette.extend(color)
+    palette.extend([0, 0, 0] * (256 - len(colors)))
+    image.putpalette(palette)
+    image.save(path)
 
 
 class TestMemoryOperations(unittest.TestCase):
@@ -97,6 +160,9 @@ class TestMemoryOperations(unittest.TestCase):
     def test_list_memory_paths_includes_card_tables(self):
         paths = {item.path for item in list_memory_paths()}
         self.assertIn("cards.high_res.bitmaps", paths)
+        self.assertIn("sprites.characters.bitmaps", paths)
+        self.assertIn("sprites.characters.palettes", paths)
+        self.assertIn("sprites.locations.thumbs", paths)
         self.assertIn("strings.cards.names.en", paths)
         self.assertIn("strings.cards.texts.en.offsets", paths)
 
@@ -111,25 +177,366 @@ class TestMemoryOperations(unittest.TestCase):
             os.unlink(source)
             os.unlink(output)
 
-    def test_patch_card_image_writes_blocked_layout(self):
+    def test_patch_card_image_writes_bitmap_and_palette(self):
         source = self._write_temp_rom()
         output = self._make_temp_path(".gba")
         image_path = self._make_temp_path(".png")
         try:
-            pixels = np.arange(80 * 80, dtype=np.uint8).reshape(80, 80)
-            Image.fromarray(pixels, mode="L").save(image_path)
+            colors = [(0, 0, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
+            pixels = np.arange(80 * 80, dtype=np.uint8).reshape(80, 80) % len(colors)
+            save_paletted_image(image_path, colors, pixels)
 
             patch_card_image(source, 0, image_path, output)
-            memory = MemoryEmulator(output)
-            card_region = memory[YugiohROM.CARD_HIGH_RES_BITMAPS.start, 80 * 80]
-            patched = bytes(card_region.read_bytes(80 * 80))
+            rom = YugiohROM(output)
+            bitmap_region = rom.card_artwork_bitmap(0)
+            palette_region = rom.card_artwork_palette(0)
+            patched = bytes(bitmap_region.read_bytes(80 * 80))
 
-            expected = split_blocks(pixels, (10, 10)).flatten().astype(np.uint8).tobytes()
+            expected = split_blocks(pixels, CARD_IMAGE_BLOCKS).flatten().astype(np.uint8).tobytes()
             self.assertEqual(patched, expected)
+            self.assertNotEqual(bytes(palette_region.read_bytes(128)), b"\x00" * 128)
+            artwork_image = next(iter(rom.card_images))
+            with Image.open(image_path) as input_image:
+                self.assertTrue(
+                    np.array_equal(
+                        np.asarray(artwork_image.convert("RGB")),
+                        np.asarray(input_image.convert("RGB")),
+                    )
+                )
         finally:
             os.unlink(source)
             os.unlink(output)
             os.unlink(image_path)
+
+    def test_patch_duelist_sprite_writes_bitmap_and_palette(self):
+        source = self._write_temp_rom()
+        output = self._make_temp_path(".gba")
+        image_path = self._make_temp_path(".png")
+        try:
+            colors = [(0, 0, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
+            pixels = np.arange(64 * 64, dtype=np.uint8).reshape(64, 64) % len(colors)
+            save_paletted_image(image_path, colors, pixels)
+
+            patch_duelist_sprite(source, 0, 1, image_path, output)
+
+            rom = YugiohROM(output)
+            bitmap_region = rom.duelist_sprite_bitmap(0, 1)
+            palette_region = rom.duelist_sprite_palette(0)
+            expected_bitmap = split_blocks(pixels, DUELIST_SPRITE_BLOCKS).flatten().astype(np.uint8).tobytes()
+            self.assertEqual(bytes(bitmap_region.read_bytes(4096)), expected_bitmap)
+            self.assertNotEqual(bytes(palette_region.read_bytes(128)), b"\x00" * 128)
+            sprite_image = next(iter(rom.duelist_sprites()))[1]
+            with Image.open(image_path) as input_image:
+                self.assertTrue(
+                    np.array_equal(
+                        np.asarray(sprite_image.convert("RGB")),
+                        np.asarray(input_image.convert("RGB")),
+                    )
+                )
+        finally:
+            os.unlink(source)
+            os.unlink(output)
+            os.unlink(image_path)
+
+    def test_patch_location_thumb_writes_bitmap_and_palette(self):
+        source = self._write_temp_rom()
+        output = self._make_temp_path(".gba")
+        image_path = self._make_temp_path(".png")
+        try:
+            colors = [(0, 0, 0), (255, 255, 0), (255, 0, 255), (0, 255, 255)]
+            pixels = np.arange(64 * 96, dtype=np.uint8).reshape(64, 96) % len(colors)
+            save_paletted_image(image_path, colors, pixels)
+
+            patch_location_thumb(source, "night", 2, image_path, output)
+
+            rom = YugiohROM(output)
+            bitmap_region = rom.location_thumb_bitmap(2, 2)
+            palette_region = rom.location_thumb_palette(2, 2)
+            expected_bitmap = split_blocks(pixels, LOCATION_THUMB_BLOCKS).flatten().astype(np.uint8).tobytes()
+            self.assertEqual(bytes(bitmap_region.read_bytes(6144)), expected_bitmap)
+            self.assertNotEqual(bytes(palette_region.read_bytes(128)), b"\x00" * 128)
+            thumb_image = next(itertools.islice(rom.location_thumbs(), 2, 3))[2]
+            with Image.open(image_path) as input_image:
+                self.assertTrue(
+                    np.array_equal(
+                        np.asarray(thumb_image.convert("RGB")),
+                        np.asarray(input_image.convert("RGB")),
+                    )
+                )
+        finally:
+            os.unlink(source)
+            os.unlink(output)
+            os.unlink(image_path)
+
+    def test_extract_card_artworks_writes_files(self):
+        source = self._write_temp_rom()
+        with tempfile.TemporaryDirectory() as output_dir:
+            images = iter([Image.new("P", (80, 80), color=3), Image.new("P", (80, 80), color=7)])
+            with patch.object(YugiohROM, "_read_card_artworks", return_value=images):
+                extract_card_artworks(source, output_dir)
+
+            self.assertTrue(os.path.exists(os.path.join(output_dir, "card-0000.png")))
+            self.assertTrue(os.path.exists(os.path.join(output_dir, "card-0001.png")))
+        os.unlink(source)
+
+    def test_extract_duelist_sprites_writes_variation_files(self):
+        source = self._write_temp_rom()
+        with tempfile.TemporaryDirectory() as output_dir:
+            sprite_sets = iter([
+                [Image.new("P", (64, 64), color=1), Image.new("P", (64, 64), color=2)],
+                [Image.new("P", (64, 64), color=3)],
+            ])
+            with (
+                patch.object(YugiohROM, "_read_card_artworks", return_value=iter(())),
+                patch.object(YugiohROM, "duelist_sprites", return_value=sprite_sets),
+            ):
+                extract_duelist_sprites(source, output_dir)
+
+            self.assertTrue(
+                os.path.exists(os.path.join(output_dir, "duelist-00-variation-0.png"))
+            )
+            self.assertTrue(
+                os.path.exists(os.path.join(output_dir, "duelist-00-variation-1.png"))
+            )
+            self.assertTrue(
+                os.path.exists(os.path.join(output_dir, "duelist-01-variation-0.png"))
+            )
+        os.unlink(source)
+
+    def test_extract_location_thumbs_writes_period_files(self):
+        source = self._write_temp_rom()
+        with tempfile.TemporaryDirectory() as output_dir:
+            thumbs = iter([
+                [Image.new("P", (96, 64), color=1)],
+                [Image.new("P", (96, 64), color=2)],
+                [Image.new("P", (96, 64), color=3)],
+            ])
+            with (
+                patch.object(YugiohROM, "_read_card_artworks", return_value=iter(())),
+                patch.object(YugiohROM, "location_thumbs", return_value=thumbs),
+            ):
+                extract_location_thumbs(source, output_dir)
+
+            self.assertTrue(os.path.exists(os.path.join(output_dir, "location-morning-00.png")))
+            self.assertTrue(os.path.exists(os.path.join(output_dir, "location-afternoon-00.png")))
+            self.assertTrue(os.path.exists(os.path.join(output_dir, "location-night-00.png")))
+        os.unlink(source)
+
+    def test_cli_build_parser_supports_sprite_commands(self):
+        parser = build_parser()
+
+        args = parser.parse_args(
+            ["sprites", "extract", "duelist", "--rom", "game.gba", "--output-dir", "out"]
+        )
+
+        self.assertEqual(args.command, "sprites")
+        self.assertEqual(args.sprites_action, "extract")
+        self.assertEqual(args.sprites_resource, "duelist")
+        self.assertEqual(args.rom, "game.gba")
+        self.assertEqual(args.output_dir, "out")
+        self.assertTrue(callable(args.func))
+        with patch("ygogxda.cli.extract_duelist_sprites") as extract_duelist_sprites_mock:
+            result = args.func(args)
+
+        extract_duelist_sprites_mock.assert_called_once_with("game.gba", "out")
+        self.assertEqual(result, 0)
+
+    def test_cli_build_parser_supports_sprite_patch_commands(self):
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "sprites",
+                "patch",
+                "location-thumb",
+                "--rom",
+                "game.gba",
+                "--period",
+                "night",
+                "--location-index",
+                "2",
+                "--image",
+                "thumb.png",
+                "--output",
+                "patched.gba",
+            ]
+        )
+
+        self.assertEqual(args.command, "sprites")
+        self.assertEqual(args.sprites_action, "patch")
+        self.assertEqual(args.sprites_resource, "location-thumb")
+        with patch("ygogxda.cli.patch_location_thumb") as patch_location_thumb_mock:
+            result = args.func(args)
+
+        patch_location_thumb_mock.assert_called_once_with(
+            "game.gba", "night", 2, "thumb.png", "patched.gba"
+        )
+        self.assertEqual(result, 0)
+
+    def test_cli_build_parser_supports_card_patch_commands(self):
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "sprites",
+                "patch",
+                "card",
+                "--rom",
+                "game.gba",
+                "--card-id",
+                "2",
+                "--image",
+                "card.png",
+                "--output",
+                "patched.gba",
+            ]
+        )
+
+        self.assertEqual(args.command, "sprites")
+        self.assertEqual(args.sprites_action, "patch")
+        self.assertEqual(args.sprites_resource, "card")
+        with patch("ygogxda.cli.patch_card_image") as patch_card_image_mock:
+            result = args.func(args)
+
+        patch_card_image_mock.assert_called_once_with("game.gba", 2, "card.png", "patched.gba")
+        self.assertEqual(result, 0)
+
+    def test_extract_string_table_writes_csv(self):
+        source = self._write_temp_rom()
+        output = self._make_temp_path(".csv")
+        try:
+            extract_string_table(source, "card_names_en", output_file=output)
+            with open(output, newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+            self.assertEqual(len(rows), 1200)
+            self.assertEqual(rows[0]["index"], "0")
+            self.assertEqual(rows[0]["text"], "A")
+            self.assertEqual(rows[25]["text"], "Z")
+        finally:
+            os.unlink(source)
+            os.unlink(output)
+
+    def test_extract_string_table_single_index(self):
+        source = self._write_temp_rom()
+        output = self._make_temp_path(".csv")
+        try:
+            extract_string_table(source, "card_names_en", output_file=output, index=3)
+            with open(output, newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["index"], "3")
+            self.assertEqual(rows[0]["text"], "D")
+        finally:
+            os.unlink(source)
+            os.unlink(output)
+
+    def test_patch_string_table_bulk_roundtrip(self):
+        source = self._write_temp_rom()
+        csv_path = self._make_temp_path(".csv")
+        output = self._make_temp_path(".gba")
+        try:
+            # Replace entries 0 and 1 with same-length values
+            with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["index", "text"])
+                writer.writerow([0, "Z"])
+                writer.writerow([1, "Y"])
+
+            patch_string_table_bulk(source, "card_names_en", csv_path, output)
+
+            self.assertEqual(get_string_entry(output, "card_names_en", 0), "Z")
+            self.assertEqual(get_string_entry(output, "card_names_en", 1), "Y")
+            self.assertEqual(get_string_entry(output, "card_names_en", 2), "C")
+        finally:
+            os.unlink(source)
+            os.unlink(csv_path)
+            os.unlink(output)
+
+    def test_patch_string_table_bulk_overflow_raises(self):
+        source = self._write_temp_rom()
+        csv_path = self._make_temp_path(".csv")
+        output = self._make_temp_path(".gba")
+        try:
+            # Writing a 20-char string to every entry produces 1200 * 21 = 25200 bytes,
+            # which exceeds the 20475-byte CARD_NAMES_EN region.
+            long_text = "A" * 20
+            with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["index", "text"])
+                for i in range(1200):
+                    writer.writerow([i, long_text])
+
+            with self.assertRaises(ValueError):
+                patch_string_table_bulk(source, "card_names_en", csv_path, output)
+        finally:
+            os.unlink(source)
+            os.unlink(csv_path)
+            if os.path.exists(output):
+                os.unlink(output)
+
+    def test_cli_strings_extract(self):
+        parser = build_parser()
+
+        args = parser.parse_args(
+            ["strings", "extract", "--rom", "game.gba", "--table", "card_names_en", "--output", "names.csv"]
+        )
+
+        self.assertEqual(args.command, "strings")
+        self.assertEqual(args.strings_action, "extract")
+        self.assertEqual(args.table, "card_names_en")
+        self.assertEqual(args.output, "names.csv")
+        self.assertTrue(callable(args.func))
+
+    def test_cli_strings_patch_single(self):
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "strings", "patch",
+                "--rom", "game.gba",
+                "--table", "card_names_en",
+                "--index", "5",
+                "--text", "NewName",
+                "--output", "patched.gba",
+            ]
+        )
+
+        self.assertEqual(args.command, "strings")
+        self.assertEqual(args.strings_action, "patch")
+        self.assertEqual(args.table, "card_names_en")
+        self.assertEqual(args.index, 5)
+        self.assertEqual(args.text, "NewName")
+        self.assertTrue(callable(args.func))
+        with patch("ygogxda.cli.patch_string_entry") as mock_patch:
+            result = args.func(args)
+
+        mock_patch.assert_called_once_with("game.gba", "card_names_en", 5, "NewName", "patched.gba")
+        self.assertEqual(result, 0)
+
+    def test_cli_strings_patch_csv(self):
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "strings", "patch",
+                "--rom", "game.gba",
+                "--table", "card_names_en",
+                "--csv", "names.csv",
+                "--output", "patched.gba",
+            ]
+        )
+
+        self.assertEqual(args.command, "strings")
+        self.assertEqual(args.strings_action, "patch")
+        self.assertEqual(args.csv_file, "names.csv")
+        self.assertTrue(callable(args.func))
+        with patch("ygogxda.cli.patch_string_table_bulk") as mock_bulk:
+            result = args.func(args)
+
+        mock_bulk.assert_called_once_with("game.gba", "card_names_en", "names.csv", "patched.gba")
+        self.assertEqual(result, 0)
 
 
 if __name__ == "__main__":

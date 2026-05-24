@@ -56,14 +56,62 @@ Run the CLI:
 uv run ygogxda memory paths
 ```
 
-Patch a card image:
+Extract card artworks:
 
 ```bash
-uv run ygogxda memory patch-card-image --rom input.gba --card-id 2 --image new.png --output patched.gba
+uv run ygogxda sprites extract card --rom input.gba --output-dir cards
 ```
 
-Patch a string table entry:
+Patch a card artwork:
 
 ```bash
-uv run ygogxda memory patch-string --rom input.gba --table card_names_en --index 2 --text "New Name" --output patched.gba
+uv run ygogxda sprites patch card --rom input.gba --card-id 2 --image new.png --output patched.gba
+```
+
+Extract duelist sprites:
+
+```bash
+uv run ygogxda sprites extract duelist --rom input.gba --output-dir duelists
+```
+
+Patch a duelist sprite:
+
+```bash
+uv run ygogxda sprites patch duelist --rom input.gba --duelist-index 3 --variation-index 0 --image new.png --output patched.gba
+```
+
+Extract location thumbnails:
+
+```bash
+uv run ygogxda sprites extract location-thumb --rom input.gba --output-dir locations
+```
+
+Patch a location thumbnail:
+
+```bash
+uv run ygogxda sprites patch location-thumb --rom input.gba --period night --location-index 2 --image new.png --output patched.gba
+```
+
+Extract all string tables to CSV:
+
+```bash
+uv run ygogxda strings extract --rom input.gba
+```
+
+Extract one string table to a file:
+
+```bash
+uv run ygogxda strings extract --rom input.gba --table card_names_en --output card_names_en.csv
+```
+
+Patch a single string entry:
+
+```bash
+uv run ygogxda strings patch --rom input.gba --table card_names_en --index 2 --text "New Name" --output patched.gba
+```
+
+Bulk-patch string entries from an edited CSV (offsets are regenerated automatically):
+
+```bash
+uv run ygogxda strings patch --rom input.gba --table card_names_en --csv card_names_en.csv --output patched.gba
 ```
