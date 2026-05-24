@@ -2,6 +2,7 @@ import os
 import struct
 import sys
 import unittest
+import argparse
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
@@ -85,22 +86,35 @@ def build_synthetic_rom():
 
 class TestYugiohRomIntegration(unittest.TestCase):
     def test_memory_map_injection_with_mocked_graphics(self):
-        payload = build_synthetic_rom()
+        local_rom = os.getenv("YGOGXDA_TEST_ROM")
 
         with patch.object(YugiohROM, '_read_card_artworks', return_value=iter(())):
-            rom = YugiohROM('ignored-by-memory-map', memory_map=payload)
+            if local_rom:
+                rom = YugiohROM(local_rom)
+            else:
+                payload = build_synthetic_rom()
+                rom = YugiohROM('ignored-by-memory-map', memory_map=payload)
 
         self.assertEqual(rom.game_title, 'YUGIOHGXDA')
-        self.assertEqual(rom.game_code, 'BYGE')
-        self.assertEqual(rom.num_cards, 3)
+        self.assertIn(rom.game_code, ('BYGE', 'BYGP'))
         self.assertEqual(len(rom.card_names), 1200)
         self.assertEqual(len(rom.card_texts), 1200)
         self.assertEqual(len(rom.card_names_jp), 1200)
-        self.assertEqual(rom.card_names[0], 'A')
-        self.assertEqual(rom.card_texts[0], 'a!')
-        self.assertEqual(rom.card_names_jp[0], 'ア')
-        self.assertEqual(rom.passwords.enter('12345678'), 1)
+
+        if local_rom:
+            self.assertEqual(rom.num_cards, 1200)
+        else:
+            self.assertEqual(rom.num_cards, 3)
+            self.assertEqual(rom.card_names[0], 'A')
+            self.assertEqual(rom.card_texts[0], 'a!')
+            self.assertEqual(rom.card_names_jp[0], 'ア')
+            self.assertEqual(rom.passwords.enter('12345678'), 1)
 
 
 if __name__ == '__main__':
-    unittest.main()
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--rom")
+    args, remaining = parser.parse_known_args()
+    if args.rom:
+        os.environ["YGOGXDA_TEST_ROM"] = args.rom
+    unittest.main(argv=[sys.argv[0], *remaining])
