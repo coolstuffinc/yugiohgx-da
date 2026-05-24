@@ -168,3 +168,5 @@ assets/
 *.sav
 *.ss*
 *.zip
+ghidra/
+*.extracted/
