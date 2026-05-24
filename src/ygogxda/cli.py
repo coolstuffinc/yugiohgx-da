@@ -2,7 +2,14 @@ import argparse
 import sys
 
 from .memory_map import CANONICAL_STRING_TABLES, list_memory_paths
-from .memory_ops import dump_region, patch_card_image, patch_string_entry
+from .memory_ops import (
+    dump_region,
+    extract_card_artworks,
+    extract_duelist_sprites,
+    extract_location_thumbs,
+    patch_card_image,
+    patch_string_entry,
+)
 
 
 def _cmd_memory_paths(_args):
@@ -25,6 +32,21 @@ def _cmd_memory_patch_card_image(args):
 
 def _cmd_memory_patch_string(args):
     patch_string_entry(args.rom, args.table, args.index, args.text, args.output)
+    return 0
+
+
+def _cmd_sprites_extract_cards(args):
+    extract_card_artworks(args.rom, args.output_dir)
+    return 0
+
+
+def _cmd_sprites_extract_duelists(args):
+    extract_duelist_sprites(args.rom, args.output_dir)
+    return 0
+
+
+def _cmd_sprites_extract_locations(args):
+    extract_location_thumbs(args.rom, args.output_dir)
     return 0
 
 
@@ -67,6 +89,34 @@ def build_parser():
     string_parser.add_argument("--text", required=True, help="New text value")
     string_parser.add_argument("--output", required=True, help="Output ROM file")
     string_parser.set_defaults(func=_cmd_memory_patch_string)
+
+    sprites_parser = subparsers.add_parser("sprites", help="Sprite extraction utilities")
+    sprites_subparsers = sprites_parser.add_subparsers(dest="sprites_command")
+
+    extract_cards_parser = sprites_subparsers.add_parser(
+        "extract-cards", help="Extract all high-resolution card artworks"
+    )
+    extract_cards_parser.add_argument("--rom", required=True, help="Input ROM file")
+    extract_cards_parser.add_argument("--output-dir", required=True, help="Directory for extracted images")
+    extract_cards_parser.set_defaults(func=_cmd_sprites_extract_cards)
+
+    extract_duelists_parser = sprites_subparsers.add_parser(
+        "extract-duelists", help="Extract all duelist sprite variations"
+    )
+    extract_duelists_parser.add_argument("--rom", required=True, help="Input ROM file")
+    extract_duelists_parser.add_argument(
+        "--output-dir", required=True, help="Directory for extracted images"
+    )
+    extract_duelists_parser.set_defaults(func=_cmd_sprites_extract_duelists)
+
+    extract_locations_parser = sprites_subparsers.add_parser(
+        "extract-locations", help="Extract academy location thumbnails"
+    )
+    extract_locations_parser.add_argument("--rom", required=True, help="Input ROM file")
+    extract_locations_parser.add_argument(
+        "--output-dir", required=True, help="Directory for extracted images"
+    )
+    extract_locations_parser.set_defaults(func=_cmd_sprites_extract_locations)
 
     return parser
 

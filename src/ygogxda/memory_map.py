@@ -34,6 +34,21 @@ CANONICAL_MEMORY_PATHS = {
         YugiohROM.CARD_HIGH_RES_BITMAPS,
         "High-resolution card bitmaps",
     ),
+    "sprites.characters.bitmaps": MemoryPath(
+        "sprites.characters.bitmaps",
+        YugiohROM.CHARACTERS_BITMAPS,
+        "Duelist sprite bitmap pointer tables",
+    ),
+    "sprites.characters.palettes": MemoryPath(
+        "sprites.characters.palettes",
+        YugiohROM.CHARACTERS_PALETTES,
+        "Duelist sprite palette pointer tables",
+    ),
+    "sprites.locations.thumbs": MemoryPath(
+        "sprites.locations.thumbs",
+        YugiohROM.ACADEMY_LOCATIONS_THUMBS,
+        "Academy location thumbnail pointer tables",
+    ),
     "strings.cards.names.en": MemoryPath(
         "strings.cards.names.en",
         YugiohROM.CARD_NAMES_EN,

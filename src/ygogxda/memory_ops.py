@@ -1,14 +1,24 @@
+from pathlib import Path
+
 import numpy as np
 from PIL import Image
 
 from .memory import MemoryEmulator, mem_region
 from .memory_map import list_memory_paths, resolve_memory_path, resolve_string_table
+from .rom import YugiohROM
 from .utils import split_blocks
 
 
 CARD_IMAGE_SIDE = 80
 CARD_IMAGE_SIZE = CARD_IMAGE_SIDE * CARD_IMAGE_SIDE
 OFFSET_SIZE = 4
+LOCATION_PERIODS = ("morning", "afternoon", "night")
+
+
+def _ensure_output_dir(output_dir):
+    path = Path(output_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def dump_region(rom_file, path, output_file):
@@ -36,6 +46,29 @@ def patch_card_image(rom_file, card_id, image_file, output_rom):
     region = mem_region(start, CARD_IMAGE_SIZE)
     memory[region] = blocked_pixels
     memory.write(output_rom)
+
+
+def extract_card_artworks(rom_file, output_dir):
+    rom = YugiohROM(rom_file)
+    output_path = _ensure_output_dir(output_dir)
+    for index, artwork in enumerate(rom.card_images):
+        artwork.save(output_path / f"card-{index:04d}.png")
+
+
+def extract_duelist_sprites(rom_file, output_dir):
+    rom = YugiohROM(rom_file)
+    output_path = _ensure_output_dir(output_dir)
+    for duelist_index, variations in enumerate(rom.duelist_sprites()):
+        for variation_index, image in enumerate(variations):
+            image.save(output_path / f"duelist-{duelist_index:02d}-variation-{variation_index}.png")
+
+
+def extract_location_thumbs(rom_file, output_dir):
+    rom = YugiohROM(rom_file)
+    output_path = _ensure_output_dir(output_dir)
+    for period, images in zip(LOCATION_PERIODS, rom.location_thumbs()):
+        for location_index, image in enumerate(images):
+            image.save(output_path / f"location-{period}-{location_index:02d}.png")
 
 
 def patch_string_entry(rom_file, table_name, index, text, output_rom):

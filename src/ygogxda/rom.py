@@ -217,7 +217,7 @@ class YugiohROM:
         raise NotImplementedError
         return
 
-    def _read_duelists_sprites(self):
+    def duelist_sprites(self):
         mem_bitmaps  = self.rom[YugiohROM.CHARACTERS_BITMAPS]
         mem_palettes = self.rom[YugiohROM.CHARACTERS_PALETTES]
         p_duelist_bitmaps = mem_bitmaps.read_pointers(29)
@@ -248,7 +248,7 @@ class YugiohROM:
                 images.append(image)
             yield images
 
-    def _read_places_thumb(self):
+    def location_thumbs(self):
         memory = self.rom[YugiohROM.ACADEMY_LOCATIONS_THUMBS]
         # Read the 3 pointers for each period of day variations
         p_bitmaps  = memory.read_pointers(3)

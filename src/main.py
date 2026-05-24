@@ -90,7 +90,7 @@ def example_password_handling(ygo):
 
 def example_extract_places_thumbnail(ygo):
     periods = ['morning', 'afternoon', 'night']
-    thumbdata = ygo._read_places_thumb()
+    thumbdata = ygo.location_thumbs()
     # Loop over each variation
     for period, images in zip(periods,thumbdata):
         # Loop over each location
@@ -99,111 +99,11 @@ def example_extract_places_thumbnail(ygo):
             image.save(f"/tmp/bg-{period}-{idx:04d}.png")
 
 def example_extract_duelist_sprites(ygo):
-    duelist_sprites = ygo._read_duelists_sprites()
-    for variations in duelist_sprites:
+    for duelist_index, variations in enumerate(ygo.duelist_sprites()):
         # Loop over each location
-        for image in variations:
+        for variation_index, image in enumerate(variations):
             # Save it!
-            image.save(f"/tmp/duelist-{id(variations)}-{id(image)}.png")
-
-def example_test(ygo):
-    from PIL import Image
-    """
-    load_memory_512__________(MEM_VRAM_BACK + 0x5cc0, 0x09458458, 10, 2);
-    load_data_in_word_chuncks(PALETTE_p_200 + 0x10,   0x09514d40,    32);
-    """
-    mem_bitmap  = ygo.rom[0x0945c958:]
-    mem_palette = ygo.rom[0x09514d40,32]
-
-    bitmap1 = mem_bitmap1.read_array(2048)
-    palette = mem_palette.read_array(32)
-    bitmap1 = bitmap1.reshape(8,-1,order='F').T
-    image = Image.fromarray(bitmap1)
-    image.putpalette(palette, rawmode="RGB;15")
-    image.save(f'/tmp/test-{id(image)}.png')
-
-    """
-    load_memory_512__________(MEM_VRAM_BACK + 0x6600, 0x0945c958, 12, 5);
-    load_memory_512__________(MEM_VRAM_BACK + 0x5ac0, 0x0945d138, 10, 1);
-    load_data_in_word_chuncks(PALETTE_p_200 + 0x40,   0x094592f8,    32);
-    """
-    mem_bitmap1 = ygo.rom[0x0945c958:]
-    mem_bitmap2 = ygo.rom[0x0945d138:]
-    mem_palette = ygo.rom[0x094592f8,32]
-    """
-    load_memory_512__________(MEM_VRAM_BACK + 0x3200, 0x09458978, 19, 4);
-    load_memory_512__________(MEM_VRAM_BACK + 0x5d80, 0x0945d278,  5, 2);
-    load_memory_512__________(MEM_VRAM_BACK + 0x5780, 0x09532fcc
-                                                        + 0x1080,  5, 3);
-    load_data_in_word_chuncks(PALETTE_p_200 + 0x30,   0x0945c318,    32);
-    """
-    mem_bitmap1 = ygo.rom[0x09458978:]
-    mem_bitmap2 = ygo.rom[0x0945d278:]
-    mem_bitmap3 = ygo.rom[0x09532fcc:]
-    mem_palette = ygo.rom[0x0945c318,32]
-
-    bitmap1 = mem_bitmap1.read_array(2048)
-    palette = mem_palette.read_array(32)
-    bitmap1 = bitmap1.reshape(8,-1,order='F').T
-    image = Image.fromarray(bitmap1)
-    image.putpalette(palette, rawmode="RGB;15")
-    image.save(f'/tmp/test-{id(image)}.png')
-
-    bitmap2 = mem_bitmap2.read_array(2048)
-    palette = mem_palette.read_array(32)
-    bitmap2 = bitmap2.reshape(8,-1,order='F').T
-    image = Image.fromarray(bitmap2)
-    image.putpalette(palette, rawmode="RGB;15")
-    image.save(f'/tmp/test-{id(image)}.png')
-
-    bitmap3 = mem_bitmap3.read_array(2048)
-    palette = mem_palette.read_array(32)
-    bitmap3 = bitmap3.reshape(8,-1,order='F').T
-    image = Image.fromarray(bitmap3)
-    image.putpalette(palette, rawmode="RGB;15")
-    image.save(f'/tmp/test-{id(image)}.png')
-
-    """
-    load_memory_512__________(MEM_VRAM_BACK + 0x6180, 0x090bb858, 8, 8);
-    load_data_in_word_chuncks(PALETTE_p_200 + 0x20,   0x0945c938,   32);
-    """
-    mem_bitmap1 = ygo.rom[0x090bb858,2048]
-    mem_palette = ygo.rom[0x0945c938,32]
-
-    bitmap1 = mem_bitmap1.read_array(2048)
-    palette = mem_palette.read_array(32)
-    bitmap1 = bitmap1.reshape(8,-1,order='F').T
-    image = Image.fromarray(bitmap1)
-    image.putpalette(palette, rawmode="RGB;15")
-    image.save(f'/tmp/test-{id(image)}.png')
-
-    """
-    load_data_in_word_chuncks(MEM_VRAM_BACK + 0x58c0, 0x09528fa8, 320);
-    load_data_in_word_chuncks(PALETTE_p_200 + 0x70,   0x09529e48,  32);
-    """
-    mem_bitmap1 = ygo.rom[0x09528fa8,320]
-    mem_palette = ygo.rom[0x09529e48, 32]
-
-    bitmap1 = mem_bitmap1.read_array(320)
-    palette = mem_palette.read_array(32)
-    bitmap1 = bitmap1.reshape(4,-1,order='F').T
-    image = Image.fromarray(bitmap1)
-    image.putpalette(palette, rawmode="RGB;15")
-    image.save(f'/tmp/test-{id(image)}.png')
-
-    """
-    load_data_in_word_chuncks(MEM_VRAM_BACK + 0x5960, 0x09529568, 64);
-    load_data_in_word_chuncks(PALETTE_p_200,          0x0944d1cc, 32);
-    """
-    mem_bitmap1 = ygo.rom[0x09529568,64]
-    mem_palette = ygo.rom[0x0944d1cc,32]
-
-    bitmap1 = mem_bitmap1.read_array(64)
-    palette = mem_palette.read_array(32)
-    bitmap1 = bitmap1.reshape(8,-1,order='F').T
-    image = Image.fromarray(bitmap1)
-    image.putpalette(palette, rawmode="RGB;15")
-    image.save(f'/tmp/test-{id(image)}.png')
+            image.save(f"/tmp/duelist-{duelist_index:02d}-variation-{variation_index}.png")
 
 def _some_4x8_digits_and_icons(ygo):
     # Some
@@ -218,31 +118,12 @@ def _some_4x8_digits_and_icons(ygo):
     image.putpalette(palette, rawmode="RGB;15")
     image.save(f'/tmp/test-{id(bitmap)}.png')
 
-def _(ygo):
-    palettes = self.rom[0x08f61184:0x08f61184+1201*64]
-    shape = (1201,64)
-    data = palettes.read_array(shape,dtype='B') # words
-    return data
-
-    # FIXME under construction: showing the palettes
-    #low_bmp = self._read_lo_card_bitmaps()
-    #low_pal = self._read_lo_card_palettes()
-    #bmp = hires_bmp.reshape(1201,10,10,8,8)
-    pal = low_pal.reshape(1201,8,8)
-    for idx in range(self.num_cards):
-        palette = pal[idx]
-        image = Image.new("RGB",palette.shape)
-        data = tuple(map(gba2rgb,palette.flatten()))
-        image.putdata(data)
-        yield image
-
 def main():
     ygo = YugiohROM(ROM_FILENAME)
     assert(ygo.game_title == 'YUGIOHGXDA')
     assert(ygo.game_code == 'BYGE'
         or ygo.game_code == 'BYGP')
 
-    example_test(ygo)
     example_patch_card(ygo)
     example_password_handling(ygo)
     example_extract_card_artwork(ygo)

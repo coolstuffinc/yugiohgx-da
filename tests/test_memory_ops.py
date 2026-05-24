@@ -3,16 +3,25 @@ import struct
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 from PIL import Image
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
+from ygogxda.cli import build_parser
 from ygogxda.memory import MemoryEmulator
 from ygogxda.passwords import YugiohPasswords
 from ygogxda.memory_map import list_memory_paths
-from ygogxda.memory_ops import get_string_entry, patch_card_image, patch_string_entry
+from ygogxda.memory_ops import (
+    extract_card_artworks,
+    extract_duelist_sprites,
+    extract_location_thumbs,
+    get_string_entry,
+    patch_card_image,
+    patch_string_entry,
+)
 from ygogxda.rom import YugiohROM
 from ygogxda.utils import split_blocks
 
@@ -97,6 +106,9 @@ class TestMemoryOperations(unittest.TestCase):
     def test_list_memory_paths_includes_card_tables(self):
         paths = {item.path for item in list_memory_paths()}
         self.assertIn("cards.high_res.bitmaps", paths)
+        self.assertIn("sprites.characters.bitmaps", paths)
+        self.assertIn("sprites.characters.palettes", paths)
+        self.assertIn("sprites.locations.thumbs", paths)
         self.assertIn("strings.cards.names.en", paths)
         self.assertIn("strings.cards.texts.en.offsets", paths)
 
@@ -130,6 +142,73 @@ class TestMemoryOperations(unittest.TestCase):
             os.unlink(source)
             os.unlink(output)
             os.unlink(image_path)
+
+    def test_extract_card_artworks_writes_files(self):
+        source = self._write_temp_rom()
+        with tempfile.TemporaryDirectory() as output_dir:
+            images = iter([Image.new("P", (80, 80), color=3), Image.new("P", (80, 80), color=7)])
+            with patch.object(YugiohROM, "_read_card_artworks", return_value=images):
+                extract_card_artworks(source, output_dir)
+
+            self.assertTrue(os.path.exists(os.path.join(output_dir, "card-0000.png")))
+            self.assertTrue(os.path.exists(os.path.join(output_dir, "card-0001.png")))
+        os.unlink(source)
+
+    def test_extract_duelist_sprites_writes_variation_files(self):
+        source = self._write_temp_rom()
+        with tempfile.TemporaryDirectory() as output_dir:
+            sprite_sets = iter([
+                [Image.new("P", (64, 64), color=1), Image.new("P", (64, 64), color=2)],
+                [Image.new("P", (64, 64), color=3)],
+            ])
+            with (
+                patch.object(YugiohROM, "_read_card_artworks", return_value=iter(())),
+                patch.object(YugiohROM, "duelist_sprites", return_value=sprite_sets),
+            ):
+                extract_duelist_sprites(source, output_dir)
+
+            self.assertTrue(
+                os.path.exists(os.path.join(output_dir, "duelist-00-variation-0.png"))
+            )
+            self.assertTrue(
+                os.path.exists(os.path.join(output_dir, "duelist-00-variation-1.png"))
+            )
+            self.assertTrue(
+                os.path.exists(os.path.join(output_dir, "duelist-01-variation-0.png"))
+            )
+        os.unlink(source)
+
+    def test_extract_location_thumbs_writes_period_files(self):
+        source = self._write_temp_rom()
+        with tempfile.TemporaryDirectory() as output_dir:
+            thumbs = iter([
+                [Image.new("P", (96, 64), color=1)],
+                [Image.new("P", (96, 64), color=2)],
+                [Image.new("P", (96, 64), color=3)],
+            ])
+            with (
+                patch.object(YugiohROM, "_read_card_artworks", return_value=iter(())),
+                patch.object(YugiohROM, "location_thumbs", return_value=thumbs),
+            ):
+                extract_location_thumbs(source, output_dir)
+
+            self.assertTrue(os.path.exists(os.path.join(output_dir, "location-morning-00.png")))
+            self.assertTrue(os.path.exists(os.path.join(output_dir, "location-afternoon-00.png")))
+            self.assertTrue(os.path.exists(os.path.join(output_dir, "location-night-00.png")))
+        os.unlink(source)
+
+    def test_cli_build_parser_supports_sprite_commands(self):
+        parser = build_parser()
+
+        args = parser.parse_args(
+            ["sprites", "extract-duelists", "--rom", "game.gba", "--output-dir", "out"]
+        )
+
+        self.assertEqual(args.command, "sprites")
+        self.assertEqual(args.sprites_command, "extract-duelists")
+        self.assertEqual(args.rom, "game.gba")
+        self.assertEqual(args.output_dir, "out")
+        self.assertTrue(callable(args.func))
 
 
 if __name__ == "__main__":
