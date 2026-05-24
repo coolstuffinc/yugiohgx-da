@@ -32,6 +32,8 @@ def build_synthetic_rom():
         YugiohROM.CARD_TEXTS_OFFSETS_EN.stop,
         YugiohROM.CARD_PASSWORD_KEYS.stop,
         YugiohROM.CARD_NUMBER_TO_ID.stop,
+        YugiohROM.CARD_NAMES_OFFSETS_JP.stop,
+        YugiohROM.CARD_NAMES_JP.stop,
     ]
     payload = bytearray(max(required_stops) - BASE_ADDRESS)
 
@@ -58,14 +60,19 @@ def build_synthetic_rom():
         write_u32(payload, YugiohROM.CARD_NAMES_OFFSETS_EN.start + i * 4, i * 2)
         write_u32(payload, YugiohROM.CARD_TEXTS_OFFSETS_EN.start + i * 4, i * 3)
         write_u16(payload, YugiohROM.CARD_NUMBER_TO_ID.start + i * 2, i)
+        write_u32(payload, YugiohROM.CARD_NAMES_OFFSETS_JP.start + i * 4, i * 3)
 
     names_data = bytearray()
     texts_data = bytearray()
+    jp_names_data = bytearray()
     for i in range(1200):
         names_data.extend(bytes([ord('A') + (i % 26), 0]))
         texts_data.extend(bytes([ord('a') + (i % 26), ord('!'), 0]))
+        # Two-byte katakana codeword (ア = F1 D0) followed by a null terminator
+        jp_names_data.extend(bytes([0xF1, 0xD0, 0x00]))
     write_bytes(payload, YugiohROM.CARD_NAMES_EN.start, names_data)
     write_bytes(payload, YugiohROM.CARD_TEXTS_EN.start, texts_data)
+    write_bytes(payload, YugiohROM.CARD_NAMES_JP.start, jp_names_data)
 
     password = '12345678'
     hashed = YugiohPasswords.forward_hash(bytes(int(ch) for ch in password))
@@ -88,8 +95,10 @@ class TestYugiohRomIntegration(unittest.TestCase):
         self.assertEqual(rom.num_cards, 3)
         self.assertEqual(len(rom.card_names), 1200)
         self.assertEqual(len(rom.card_texts), 1200)
+        self.assertEqual(len(rom.card_names_jp), 1200)
         self.assertEqual(rom.card_names[0], 'A')
         self.assertEqual(rom.card_texts[0], 'a!')
+        self.assertEqual(rom.card_names_jp[0], 'ア')
         self.assertEqual(rom.passwords.enter('12345678'), 1)
 
 
