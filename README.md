@@ -42,4 +42,28 @@ Reverse Engineering the game Yu-Gi-Oh: Duel Academy (GBA)
 |-----------|------------------------------------|-----------------------------------------------------------|
 | md5sum    | `a44251198e1c9087c40262c34531a5a3` | Yu-Gi-Oh! Duel Monsters GX - Mezase Duel King (Japan).gba |
 
+## Development with uv
 
+Install dependencies with uv:
+
+```bash
+uv sync
+```
+
+Run the CLI:
+
+```bash
+uv run ygogxda memory paths
+```
+
+Patch a card image:
+
+```bash
+uv run ygogxda memory patch-card-image --rom input.gba --card-id 2 --image new.png --output patched.gba
+```
+
+Patch a string table entry:
+
+```bash
+uv run ygogxda memory patch-string --rom input.gba --table card_names_en --index 2 --text "New Name" --output patched.gba
+```

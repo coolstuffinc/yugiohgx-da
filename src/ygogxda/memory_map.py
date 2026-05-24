@@ -1,0 +1,101 @@
+from dataclasses import dataclass
+
+from .rom import YugiohROM
+
+
+@dataclass(frozen=True)
+class MemoryPath:
+    path: str
+    region: slice
+    description: str
+
+    @property
+    def size(self) -> int:
+        return int(self.region.stop - self.region.start)
+
+
+@dataclass(frozen=True)
+class StringTable:
+    name: str
+    strings_path: str
+    offsets_path: str
+    description: str
+    encoding: str = "utf-8"
+
+
+CANONICAL_MEMORY_PATHS = {
+    "cards.high_res.palettes": MemoryPath(
+        "cards.high_res.palettes",
+        YugiohROM.CARD_HIGH_RES_PALETTES,
+        "High-resolution card palettes",
+    ),
+    "cards.high_res.bitmaps": MemoryPath(
+        "cards.high_res.bitmaps",
+        YugiohROM.CARD_HIGH_RES_BITMAPS,
+        "High-resolution card bitmaps",
+    ),
+    "strings.cards.names.en": MemoryPath(
+        "strings.cards.names.en",
+        YugiohROM.CARD_NAMES_EN,
+        "English card names string table payload",
+    ),
+    "strings.cards.names.en.offsets": MemoryPath(
+        "strings.cards.names.en.offsets",
+        YugiohROM.CARD_NAMES_OFFSETS_EN,
+        "English card names offset table",
+    ),
+    "strings.cards.texts.en": MemoryPath(
+        "strings.cards.texts.en",
+        YugiohROM.CARD_TEXTS_EN,
+        "English card text string table payload",
+    ),
+    "strings.cards.texts.en.offsets": MemoryPath(
+        "strings.cards.texts.en.offsets",
+        YugiohROM.CARD_TEXTS_OFFSETS_EN,
+        "English card text offset table",
+    ),
+    "strings.ui.en": MemoryPath(
+        "strings.ui.en",
+        YugiohROM.GAME_UI_STRINGS_EN,
+        "English game UI strings payload",
+    ),
+    "strings.ui.en.offsets": MemoryPath(
+        "strings.ui.en.offsets",
+        YugiohROM.GAME_UI_OFFSETS_EN,
+        "English game UI offset table",
+    ),
+}
+
+
+CANONICAL_STRING_TABLES = {
+    "card_names_en": StringTable(
+        "card_names_en",
+        "strings.cards.names.en",
+        "strings.cards.names.en.offsets",
+        "Card names in English",
+    ),
+    "card_texts_en": StringTable(
+        "card_texts_en",
+        "strings.cards.texts.en",
+        "strings.cards.texts.en.offsets",
+        "Card texts in English",
+    ),
+}
+
+
+def resolve_memory_path(path: str) -> MemoryPath:
+    try:
+        return CANONICAL_MEMORY_PATHS[path]
+    except KeyError as exc:
+        raise KeyError(f"Unknown memory path: {path}") from exc
+
+
+def resolve_string_table(name: str) -> StringTable:
+    try:
+        return CANONICAL_STRING_TABLES[name]
+    except KeyError as exc:
+        raise KeyError(f"Unknown string table: {name}") from exc
+
+
+def list_memory_paths():
+    return tuple(CANONICAL_MEMORY_PATHS[key] for key in sorted(CANONICAL_MEMORY_PATHS))

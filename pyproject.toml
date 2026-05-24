@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yugiohgx-da"
+version = "0.1.0"
+description = "Utilities for Yu-Gi-Oh! GX Duel Academy ROM memory mapping and patching"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "numpy",
+  "pillow",
+]
+
+[project.scripts]
+ygogxda = "ygogxda.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
