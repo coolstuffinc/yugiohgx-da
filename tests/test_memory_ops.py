@@ -20,6 +20,10 @@ from ygogxda.memory_ops import (
     CARD_IMAGE_BLOCKS,
     DUELIST_SPRITE_BLOCKS,
     LOCATION_THUMB_BLOCKS,
+    SUBDIR_CARDS,
+    SUBDIR_DUELISTS,
+    SUBDIR_LOCATIONS,
+    canonical_output_path,
     extract_card_artworks,
     extract_duelist_sprites,
     extract_location_thumbs,
@@ -589,6 +593,117 @@ class TestMemoryOperations(unittest.TestCase):
             result = args.func(args)
 
         mock_bulk.assert_called_once_with("game.gba", "card_names_en", "names.csv", "patched.gba")
+        self.assertEqual(result, 0)
+
+
+class TestCanonicalOutputPath(unittest.TestCase):
+    def test_appends_extracted_suffix(self):
+        from pathlib import Path
+        result = canonical_output_path("ygogxda.gba")
+        self.assertEqual(result.name, "ygogxda.gba.extracted")
+
+    def test_preserves_parent_directory(self):
+        from pathlib import Path
+        result = canonical_output_path("/some/path/game.gba")
+        self.assertEqual(result.parent, Path("/some/path"))
+        self.assertEqual(result.name, "game.gba.extracted")
+
+    def test_subdir_constants_are_under_sprites(self):
+        from pathlib import Path
+        self.assertEqual(str(SUBDIR_CARDS), str(Path("sprites") / "cards"))
+        self.assertEqual(str(SUBDIR_DUELISTS), str(Path("sprites") / "duelists"))
+        self.assertEqual(str(SUBDIR_LOCATIONS), str(Path("sprites") / "locations"))
+
+
+class TestExtractUsesCanonicalPath(unittest.TestCase):
+    def _write_temp_rom(self, directory):
+        payload = build_synthetic_rom()
+        path = os.path.join(directory, "game.gba")
+        with open(path, "wb") as f:
+            f.write(payload)
+        return path
+
+    def test_extract_card_artworks_uses_canonical_path_when_no_output_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rom_path = self._write_temp_rom(tmpdir)
+            images = iter([Image.new("P", (80, 80), color=3), Image.new("P", (80, 80), color=7)])
+            with patch.object(YugiohROM, "_read_card_artworks", return_value=images):
+                extract_card_artworks(rom_path)
+            expected_dir = os.path.join(tmpdir, "game.gba.extracted", "sprites", "cards")
+            self.assertTrue(os.path.exists(os.path.join(expected_dir, "card-0000.png")))
+            self.assertTrue(os.path.exists(os.path.join(expected_dir, "card-0001.png")))
+
+    def test_extract_duelist_sprites_uses_canonical_path_when_no_output_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rom_path = self._write_temp_rom(tmpdir)
+            sprite_sets = iter([
+                [Image.new("P", (64, 64), color=1), Image.new("P", (64, 64), color=2)],
+            ])
+            with (
+                patch.object(YugiohROM, "_read_card_artworks", return_value=iter(())),
+                patch.object(YugiohROM, "duelist_sprites", return_value=sprite_sets),
+            ):
+                extract_duelist_sprites(rom_path)
+            expected_dir = os.path.join(tmpdir, "game.gba.extracted", "sprites", "duelists")
+            self.assertTrue(os.path.exists(os.path.join(expected_dir, "duelist-00-variation-0.png")))
+            self.assertTrue(os.path.exists(os.path.join(expected_dir, "duelist-00-variation-1.png")))
+
+    def test_extract_location_thumbs_uses_canonical_path_when_no_output_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rom_path = self._write_temp_rom(tmpdir)
+            thumbs = iter([
+                [Image.new("P", (96, 64), color=1)],
+                [Image.new("P", (96, 64), color=2)],
+                [Image.new("P", (96, 64), color=3)],
+            ])
+            with (
+                patch.object(YugiohROM, "_read_card_artworks", return_value=iter(())),
+                patch.object(YugiohROM, "location_thumbs", return_value=thumbs),
+            ):
+                extract_location_thumbs(rom_path)
+            expected_dir = os.path.join(tmpdir, "game.gba.extracted", "sprites", "locations")
+            self.assertTrue(os.path.exists(os.path.join(expected_dir, "location-morning-00.png")))
+            self.assertTrue(os.path.exists(os.path.join(expected_dir, "location-afternoon-00.png")))
+            self.assertTrue(os.path.exists(os.path.join(expected_dir, "location-night-00.png")))
+
+
+class TestCLIExtractCanonicalPath(unittest.TestCase):
+    def test_cli_sprites_extract_card_without_output_dir(self):
+        parser = build_parser()
+        args = parser.parse_args(["sprites", "extract", "card", "--rom", "game.gba"])
+        self.assertIsNone(args.output_dir)
+        with patch("ygogxda.cli.extract_card_artworks") as mock:
+            result = args.func(args)
+        mock.assert_called_once_with("game.gba", None)
+        self.assertEqual(result, 0)
+
+    def test_cli_sprites_extract_duelist_without_output_dir(self):
+        parser = build_parser()
+        args = parser.parse_args(["sprites", "extract", "duelist", "--rom", "game.gba"])
+        self.assertIsNone(args.output_dir)
+        with patch("ygogxda.cli.extract_duelist_sprites") as mock:
+            result = args.func(args)
+        mock.assert_called_once_with("game.gba", None)
+        self.assertEqual(result, 0)
+
+    def test_cli_sprites_extract_location_without_output_dir(self):
+        parser = build_parser()
+        args = parser.parse_args(["sprites", "extract", "location-thumb", "--rom", "game.gba"])
+        self.assertIsNone(args.output_dir)
+        with patch("ygogxda.cli.extract_location_thumbs") as mock:
+            result = args.func(args)
+        mock.assert_called_once_with("game.gba", None)
+        self.assertEqual(result, 0)
+
+    def test_cli_sprites_extract_card_with_explicit_output_dir(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["sprites", "extract", "card", "--rom", "game.gba", "--output-dir", "mydir"]
+        )
+        self.assertEqual(args.output_dir, "mydir")
+        with patch("ygogxda.cli.extract_card_artworks") as mock:
+            result = args.func(args)
+        mock.assert_called_once_with("game.gba", "mydir")
         self.assertEqual(result, 0)
 
 

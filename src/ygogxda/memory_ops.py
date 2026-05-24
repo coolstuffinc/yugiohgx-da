@@ -24,6 +24,20 @@ LOCATION_THUMB_SIZE = (96, 64)
 LOCATION_THUMB_BLOCKS = (12, 8)
 LOCATION_THUMB_PALETTE_COLORS = 64
 
+SUBDIR_CARDS = Path("sprites") / "cards"
+SUBDIR_DUELISTS = Path("sprites") / "duelists"
+SUBDIR_LOCATIONS = Path("sprites") / "locations"
+
+
+def canonical_output_path(rom_file):
+    """Return the canonical extraction directory for a ROM file.
+
+    Given ``rom_file`` (e.g. ``ygogxda.gba``), returns
+    ``ygogxda.gba.extracted/`` next to the ROM file.
+    """
+    p = Path(rom_file)
+    return p.with_name(p.name + ".extracted")
+
 
 def _ensure_output_dir(output_dir):
     path = Path(output_dir)
@@ -106,23 +120,29 @@ def patch_card_image(rom_file, card_id, image_file, output_rom):
     rom.save(output_rom)
 
 
-def extract_card_artworks(rom_file, output_dir):
+def extract_card_artworks(rom_file, output_dir=None):
     rom = YugiohROM(rom_file)
+    if output_dir is None:
+        output_dir = canonical_output_path(rom_file) / SUBDIR_CARDS
     output_path = _ensure_output_dir(output_dir)
     for index, artwork in enumerate(rom.card_images):
         artwork.save(output_path / f"card-{index:04d}.png")
 
 
-def extract_duelist_sprites(rom_file, output_dir):
+def extract_duelist_sprites(rom_file, output_dir=None):
     rom = YugiohROM(rom_file)
+    if output_dir is None:
+        output_dir = canonical_output_path(rom_file) / SUBDIR_DUELISTS
     output_path = _ensure_output_dir(output_dir)
     for duelist_index, variations in enumerate(rom.duelist_sprites()):
         for variation_index, image in enumerate(variations):
             image.save(output_path / f"duelist-{duelist_index:02d}-variation-{variation_index}.png")
 
 
-def extract_location_thumbs(rom_file, output_dir):
+def extract_location_thumbs(rom_file, output_dir=None):
     rom = YugiohROM(rom_file)
+    if output_dir is None:
+        output_dir = canonical_output_path(rom_file) / SUBDIR_LOCATIONS
     output_path = _ensure_output_dir(output_dir)
     for period, images in zip(LOCATION_PERIODS, rom.location_thumbs()):
         for location_index, image in enumerate(images):

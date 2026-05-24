@@ -13,6 +13,10 @@ from .memory_ops import (
     patch_location_thumb,
     patch_string_entry,
     patch_string_table_bulk,
+    canonical_output_path,
+    SUBDIR_CARDS,
+    SUBDIR_DUELISTS,
+    SUBDIR_LOCATIONS,
     LOCATION_PERIODS,
 )
 
@@ -157,7 +161,9 @@ def build_parser():
     )
     sprites_extract_card_parser.add_argument("--rom", required=True, help="Input ROM file")
     sprites_extract_card_parser.add_argument(
-        "--output-dir", required=True, help="Directory for extracted images"
+        "--output-dir",
+        default=None,
+        help="Directory for extracted images (default: <rom>.extracted/sprites/cards/)",
     )
     sprites_extract_card_parser.set_defaults(func=_cmd_sprites_extract_cards)
 
@@ -166,7 +172,9 @@ def build_parser():
     )
     sprites_extract_duelist_parser.add_argument("--rom", required=True, help="Input ROM file")
     sprites_extract_duelist_parser.add_argument(
-        "--output-dir", required=True, help="Directory for extracted images"
+        "--output-dir",
+        default=None,
+        help="Directory for extracted images (default: <rom>.extracted/sprites/duelists/)",
     )
     sprites_extract_duelist_parser.set_defaults(func=_cmd_sprites_extract_duelists)
 
@@ -175,7 +183,9 @@ def build_parser():
     )
     sprites_extract_location_parser.add_argument("--rom", required=True, help="Input ROM file")
     sprites_extract_location_parser.add_argument(
-        "--output-dir", required=True, help="Directory for extracted images"
+        "--output-dir",
+        default=None,
+        help="Directory for extracted images (default: <rom>.extracted/sprites/locations/)",
     )
     sprites_extract_location_parser.set_defaults(func=_cmd_sprites_extract_locations)
 
