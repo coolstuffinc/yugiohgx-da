@@ -4,7 +4,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-sys.path.insert(0, os.path.abspath('/tmp/workspace/coolstuffinc/yugiohgx-da/src'))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
 from ygogxda.memory import BASE_ADDRESS
 from ygogxda.passwords import YugiohPasswords
@@ -42,7 +42,7 @@ def build_synthetic_rom():
         b'YUGIOHGXDA\x00\x00',
         b'BYGE',
         b'01',
-        0x96,
+        0,
         0,
         0,
         b'\x00' * 7,
@@ -81,7 +81,7 @@ class TestYugiohRomIntegration(unittest.TestCase):
         payload = build_synthetic_rom()
 
         with patch.object(YugiohROM, '_read_card_artworks', return_value=iter(())):
-            rom = YugiohROM('/tmp/workspace/coolstuffinc/yugiohgx-da/does-not-exist.gba', memory_map=payload)
+            rom = YugiohROM('ignored-by-memory-map', memory_map=payload)
 
         self.assertEqual(rom.game_title, 'YUGIOHGXDA')
         self.assertEqual(rom.game_code, 'BYGE')

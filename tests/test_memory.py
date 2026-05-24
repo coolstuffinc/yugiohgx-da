@@ -2,7 +2,7 @@ import os
 import sys
 import unittest
 
-sys.path.insert(0, os.path.abspath('/tmp/workspace/coolstuffinc/yugiohgx-da/src'))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
 from ygogxda.memory import BASE_ADDRESS, MemoryEmulator, mem_region
 
@@ -25,8 +25,8 @@ class TestMemoryEmulator(unittest.TestCase):
         chunk = memory[BASE_ADDRESS + 8, 4]
         self.assertEqual(bytes(chunk.read_bytes(4)), bytes([8, 9, 10, 11]))
 
-        memory[mem_region(BASE_ADDRESS + 2, 5)] = b'abc'
-        self.assertEqual(bytes(memory[0:6].read_bytes(6)), b'\x00\x01abc\x05')
+        memory[mem_region(BASE_ADDRESS + 2, 5)] = b'abcde'
+        self.assertEqual(bytes(memory[0:7].read_bytes(7)), b'\x00\x01abcde')
 
 
 if __name__ == '__main__':
