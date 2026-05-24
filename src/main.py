@@ -120,8 +120,10 @@ def _some_4x8_digits_and_icons(ygo):
 
 def main():
     ygo = YugiohROM(ROM_FILENAME)
-    assert(ygo.game_title == 'YUGIOHGXDA')
-    assert ygo.game_code in ('BYGE', 'BYGP'), f"Invalid game code: {ygo.game_code}"
+    if ygo.game_title != 'YUGIOHGXDA':
+        raise ValueError(f"Invalid game title: {ygo.game_title}")
+    if ygo.game_code not in ('BYGE', 'BYGP'):
+        raise ValueError(f"Invalid game code: {ygo.game_code}")
 
     example_patch_card(ygo)
     example_password_handling(ygo)
