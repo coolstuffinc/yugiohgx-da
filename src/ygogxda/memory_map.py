@@ -95,6 +95,12 @@ CANONICAL_STRING_TABLES = {
         "strings.cards.texts.en.offsets",
         "Card texts in English",
     ),
+    "ui_en": StringTable(
+        "ui_en",
+        "strings.ui.en",
+        "strings.ui.en.offsets",
+        "Game UI strings in English",
+    ),
 }
 
 
