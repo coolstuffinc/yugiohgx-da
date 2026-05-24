@@ -7,6 +7,7 @@ from PIL import Image
 
 from .memory import MemoryEmulator, mem_region
 from .memory_map import CANONICAL_STRING_TABLES, list_memory_paths, resolve_memory_path, resolve_string_table
+from .japanese_encoding import decode as japanese_decode, encode as japanese_encode
 from .rom import YugiohROM
 from .utils import charset_decode, rgb2gba, split_blocks
 
@@ -90,13 +91,25 @@ def _patch_indexed_image(bitmap_region, palette_region, pixels, palette_bytes, b
 def _decode_string_payload(payload, encoding):
     """Decode a null-terminated string payload with compatibility fallbacks."""
     raw = payload.split(b"\x00", 1)[0]
+    if encoding == "japanese_rom":
+        return japanese_decode(raw)
     try:
         return raw.decode(encoding)
-    except UnicodeDecodeError:
+    except (UnicodeDecodeError, LookupError):
         try:
             return charset_decode(raw)
         except UnicodeDecodeError:
-            return raw.decode(encoding, errors="replace")
+            try:
+                return raw.decode(encoding, errors="replace")
+            except LookupError:
+                return raw.decode("latin-1", errors="replace")
+
+
+def _encode_string_payload(text, encoding):
+    """Encode text for a table-specific encoding."""
+    if encoding == "japanese_rom":
+        return japanese_encode(text)
+    return text.encode(encoding)
 
 
 def dump_region(rom_file, path, output_file=None):
@@ -203,7 +216,7 @@ def patch_string_entry(rom_file, table_name, index, text, output_rom):
     if capacity <= 0:
         raise ValueError(f"Invalid table offsets for index {index}")
 
-    encoded = text.encode(table.encoding)
+    encoded = _encode_string_payload(text, table.encoding)
     if len(encoded) + 1 > capacity:
         raise ValueError(
             f"Text exceeds capacity for entry {index} in {table_name} "
@@ -314,7 +327,7 @@ def patch_string_table_bulk(rom_file, table_name, csv_file, output_rom):
             idx = int(row["index"])
             if idx < 0 or idx >= num_entries:
                 raise IndexError(f"CSV index {idx} out of range 0..{num_entries - 1}")
-            entries[idx] = row["text"].encode(table.encoding)
+            entries[idx] = _encode_string_payload(row["text"], table.encoding)
 
     # Encode all entries (null-terminated)
     encoded = [entry + b"\x00" for entry in entries]

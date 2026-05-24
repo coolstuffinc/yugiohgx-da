@@ -68,7 +68,9 @@ def build_synthetic_rom():
         YugiohROM.CHARACTERS_PALETTES.stop,
         YugiohROM.ACADEMY_LOCATIONS_THUMBS.stop,
         YugiohROM.CARD_NAMES_OFFSETS_EN.stop,
+        YugiohROM.CARD_NAMES_OFFSETS_JP.stop,
         YugiohROM.CARD_TEXTS_OFFSETS_EN.stop,
+        YugiohROM.CARD_NAMES_JP.stop,
         YugiohROM.CARD_PASSWORD_KEYS.stop,
         YugiohROM.CARD_NUMBER_TO_ID.stop,
     ]
@@ -94,15 +96,19 @@ def build_synthetic_rom():
 
     for i in range(1201):
         write_u32(payload, YugiohROM.CARD_NAMES_OFFSETS_EN.start + i * 4, i * 2)
+        write_u32(payload, YugiohROM.CARD_NAMES_OFFSETS_JP.start + i * 4, i * 3)
         write_u32(payload, YugiohROM.CARD_TEXTS_OFFSETS_EN.start + i * 4, i * 3)
         write_u16(payload, YugiohROM.CARD_NUMBER_TO_ID.start + i * 2, i)
 
     names_data = bytearray()
+    jp_names_data = bytearray()
     texts_data = bytearray()
     for i in range(1200):
         names_data.extend(bytes([ord("A") + (i % 26), 0]))
+        jp_names_data.extend(bytes([0xF1, 0xD0, 0x00]))  # ア + null
         texts_data.extend(bytes([ord("a") + (i % 26), ord("!"), 0]))
     write_bytes(payload, YugiohROM.CARD_NAMES_EN.start, names_data)
+    write_bytes(payload, YugiohROM.CARD_NAMES_JP.start, jp_names_data)
     write_bytes(payload, YugiohROM.CARD_TEXTS_EN.start, texts_data)
 
     password = "12345678"
@@ -441,6 +447,18 @@ class TestMemoryOperations(unittest.TestCase):
             os.unlink(source)
             os.unlink(output)
 
+    def test_extract_string_table_japanese_rom_encoding(self):
+        source = self._write_temp_rom()
+        output = self._make_temp_path(".csv")
+        try:
+            extract_string_table(source, "card_names_jp", output_file=output, index=0)
+            with open(output, newline="", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+            self.assertEqual(rows[0]["text"], "ア")
+        finally:
+            os.unlink(source)
+            os.unlink(output)
+
     def test_extract_string_table_handles_invalid_utf8(self):
         source = self._write_temp_rom()
         output = self._make_temp_path(".csv")
@@ -528,6 +546,16 @@ class TestMemoryOperations(unittest.TestCase):
             os.unlink(csv_path)
             if os.path.exists(output):
                 os.unlink(output)
+
+    def test_patch_string_entry_japanese_rom_encoding(self):
+        source = self._write_temp_rom()
+        output = self._make_temp_path(".gba")
+        try:
+            patch_string_entry(source, "card_names_jp", 0, "イ", output)
+            self.assertEqual(get_string_entry(output, "card_names_jp", 0), "イ")
+        finally:
+            os.unlink(source)
+            os.unlink(output)
 
     def test_cli_strings_extract(self):
         parser = build_parser()
