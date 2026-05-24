@@ -104,6 +104,12 @@ Extract one string table to a file:
 uv run ygogxda strings extract --rom input.gba --table card_names_en --output card_names_en.csv
 ```
 
+Extract UI strings:
+
+```bash
+uv run ygogxda strings extract --rom input.gba --table ui_en --output ui_en.csv
+```
+
 Patch a single string entry:
 
 ```bash

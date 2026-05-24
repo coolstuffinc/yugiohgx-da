@@ -8,7 +8,7 @@ from PIL import Image
 from .memory import MemoryEmulator, mem_region
 from .memory_map import CANONICAL_STRING_TABLES, list_memory_paths, resolve_memory_path, resolve_string_table
 from .rom import YugiohROM
-from .utils import rgb2gba, split_blocks
+from .utils import charset_decode, rgb2gba, split_blocks
 
 
 CARD_IMAGE_SIDE = 80
@@ -69,6 +69,17 @@ def _load_indexed_image(image_file, size, palette_entries):
 def _patch_indexed_image(bitmap_region, palette_region, pixels, palette_bytes, blocks):
     bitmap_region[:] = split_blocks(pixels, blocks).flatten().tobytes()
     palette_region[:] = palette_bytes
+
+
+def _decode_string_payload(payload, encoding):
+    raw = payload.split(b"\x00", 1)[0]
+    try:
+        return raw.decode(encoding)
+    except UnicodeDecodeError:
+        try:
+            return charset_decode(raw)
+        except UnicodeDecodeError:
+            return raw.decode(encoding, errors="replace")
 
 
 def dump_region(rom_file, path, output_file):
@@ -193,7 +204,7 @@ def get_string_entry(rom_file, table_name, index):
     start = strings_region.start + int(offsets[index])
     stop = strings_region.start + int(offsets[index + 1])
     payload = memory[mem_region(start, stop - start)].read_bytes(stop - start)
-    return payload.split(b"\x00", 1)[0].decode(table.encoding)
+    return _decode_string_payload(payload, table.encoding)
 
 
 def extract_string_table(rom_file, table_name, output_file=None, index=None):
@@ -216,7 +227,7 @@ def extract_string_table(rom_file, table_name, output_file=None, index=None):
         start = strings_region.start + int(offsets[i])
         stop = strings_region.start + int(offsets[i + 1])
         payload = memory[mem_region(start, stop - start)].read_bytes(stop - start)
-        return payload.split(b"\x00", 1)[0].decode(table.encoding)
+        return _decode_string_payload(payload, table.encoding)
 
     if index is not None:
         if index < 0 or index >= num_entries:
@@ -263,7 +274,7 @@ def patch_string_table_bulk(rom_file, table_name, csv_file, output_rom):
         start = strings_region.start + int(offsets[i])
         stop = strings_region.start + int(offsets[i + 1])
         payload = memory[mem_region(start, stop - start)].read_bytes(stop - start)
-        entries.append(payload.split(b"\x00", 1)[0].decode(table.encoding))
+        entries.append(payload.split(b"\x00", 1)[0])
 
     # Apply CSV overrides
     with open(csv_file, "r", newline="", encoding="utf-8") as f:
@@ -272,10 +283,10 @@ def patch_string_table_bulk(rom_file, table_name, csv_file, output_rom):
             idx = int(row["index"])
             if idx < 0 or idx >= num_entries:
                 raise IndexError(f"CSV index {idx} out of range 0..{num_entries - 1}")
-            entries[idx] = row["text"]
+            entries[idx] = row["text"].encode(table.encoding)
 
     # Encode all entries (null-terminated)
-    encoded = [text.encode(table.encoding) + b"\x00" for text in entries]
+    encoded = [entry + b"\x00" for entry in entries]
     new_total = sum(len(e) for e in encoded)
     if new_total > region_capacity:
         raise ValueError(

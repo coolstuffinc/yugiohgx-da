@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from ygogxda.cli import build_parser
 from ygogxda.memory import MemoryEmulator
 from ygogxda.passwords import YugiohPasswords
-from ygogxda.memory_map import list_memory_paths
+from ygogxda.memory_map import CANONICAL_STRING_TABLES, list_memory_paths
 from ygogxda.memory_ops import (
     CARD_IMAGE_BLOCKS,
     DUELIST_SPRITE_BLOCKS,
@@ -165,6 +165,7 @@ class TestMemoryOperations(unittest.TestCase):
         self.assertIn("sprites.locations.thumbs", paths)
         self.assertIn("strings.cards.names.en", paths)
         self.assertIn("strings.cards.texts.en.offsets", paths)
+        self.assertIn("strings.ui.en", paths)
 
     def test_patch_string_entry(self):
         source = self._write_temp_rom()
@@ -432,6 +433,22 @@ class TestMemoryOperations(unittest.TestCase):
             os.unlink(source)
             os.unlink(output)
 
+    def test_extract_string_table_handles_invalid_utf8(self):
+        source = self._write_temp_rom()
+        output = self._make_temp_path(".csv")
+        try:
+            with open(source, "r+b") as rom_file:
+                rom_file.seek(YugiohROM.CARD_NAMES_EN.start - 0x08000000)
+                rom_file.write(b"\xff\x00")
+
+            extract_string_table(source, "card_names_en", output_file=output, index=0)
+            with open(output, newline="", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+            self.assertEqual(rows[0]["text"], "\ufffd")
+        finally:
+            os.unlink(source)
+            os.unlink(output)
+
     def test_patch_string_table_bulk_roundtrip(self):
         source = self._write_temp_rom()
         csv_path = self._make_temp_path(".csv")
@@ -449,6 +466,33 @@ class TestMemoryOperations(unittest.TestCase):
             self.assertEqual(get_string_entry(output, "card_names_en", 0), "Z")
             self.assertEqual(get_string_entry(output, "card_names_en", 1), "Y")
             self.assertEqual(get_string_entry(output, "card_names_en", 2), "C")
+        finally:
+            os.unlink(source)
+            os.unlink(csv_path)
+            os.unlink(output)
+
+    def test_patch_string_table_bulk_preserves_raw_bytes_for_untouched_entries(self):
+        source = self._write_temp_rom()
+        csv_path = self._make_temp_path(".csv")
+        output = self._make_temp_path(".gba")
+        try:
+            with open(source, "r+b") as rom_file:
+                rom_file.seek(YugiohROM.CARD_NAMES_EN.start - 0x08000000 + 2)
+                rom_file.write(b"\xff\x00")
+
+            with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["index", "text"])
+                writer.writerow([0, "Z"])
+
+            patch_string_table_bulk(source, "card_names_en", csv_path, output)
+
+            patched_memory = MemoryEmulator(output)
+            start = YugiohROM.CARD_NAMES_EN.start + 2
+            self.assertEqual(
+                patched_memory[start, 2].read_bytes(2),
+                b"\xff\x00",
+            )
         finally:
             os.unlink(source)
             os.unlink(csv_path)
@@ -488,6 +532,14 @@ class TestMemoryOperations(unittest.TestCase):
         self.assertEqual(args.table, "card_names_en")
         self.assertEqual(args.output, "names.csv")
         self.assertTrue(callable(args.func))
+
+    def test_cli_strings_extract_includes_ui_table_choice(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["strings", "extract", "--rom", "game.gba", "--table", "ui_en"]
+        )
+        self.assertIn("ui_en", CANONICAL_STRING_TABLES)
+        self.assertEqual(args.table, "ui_en")
 
     def test_cli_strings_patch_single(self):
         parser = build_parser()
