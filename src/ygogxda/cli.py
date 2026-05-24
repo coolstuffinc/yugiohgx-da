@@ -43,6 +43,11 @@ def _cmd_sprites_extract_cards(args):
     return 0
 
 
+def _cmd_sprites_patch_card(args):
+    patch_card_image(args.rom, args.card_id, args.image, args.output)
+    return 0
+
+
 def _cmd_sprites_extract_duelists(args):
     extract_duelist_sprites(args.rom, args.output_dir)
     return 0
@@ -112,6 +117,15 @@ def build_parser():
     extract_cards_parser.add_argument("--rom", required=True, help="Input ROM file")
     extract_cards_parser.add_argument("--output-dir", required=True, help="Directory for extracted images")
     extract_cards_parser.set_defaults(func=_cmd_sprites_extract_cards)
+
+    patch_card_parser = sprites_subparsers.add_parser(
+        "patch-card", help="Patch one high-resolution card artwork from an input image"
+    )
+    patch_card_parser.add_argument("--rom", required=True, help="Input ROM file")
+    patch_card_parser.add_argument("--card-id", type=int, required=True, help="Card ID to patch")
+    patch_card_parser.add_argument("--image", required=True, help="Input image file")
+    patch_card_parser.add_argument("--output", required=True, help="Output ROM file")
+    patch_card_parser.set_defaults(func=_cmd_sprites_patch_card)
 
     extract_duelists_parser = sprites_subparsers.add_parser(
         "extract-duelists", help="Extract all duelist sprite variations"

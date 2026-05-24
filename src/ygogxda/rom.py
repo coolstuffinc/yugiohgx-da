@@ -96,9 +96,23 @@ class YugiohROM:
 
     def card_image(self, card_id):
         """ Returns memory region for a card artwork """
-        start = YugiohROM.CARD_HIGH_RES_BITMAPS.start
-        card_bitmap = self.rom[start+6400*card_id:start+6400*(card_id+1)]
-        return card_bitmap
+        return self.card_artwork_bitmap(card_id)
+
+    def card_artwork_bitmap(self, card_id):
+        num_cards = (YugiohROM.CARD_HIGH_RES_BITMAPS.stop - YugiohROM.CARD_HIGH_RES_BITMAPS.start) // 6400
+        if card_id < 0 or card_id >= num_cards:
+            raise IndexError(f"card_id must be between 0 and {num_cards - 1}")
+
+        start = YugiohROM.CARD_HIGH_RES_BITMAPS.start + 6400 * card_id
+        return self.rom[start, 6400]
+
+    def card_artwork_palette(self, card_id):
+        num_cards = (YugiohROM.CARD_HIGH_RES_PALETTES.stop - YugiohROM.CARD_HIGH_RES_PALETTES.start) // 128
+        if card_id < 0 or card_id >= num_cards:
+            raise IndexError(f"card_id must be between 0 and {num_cards - 1}")
+
+        start = YugiohROM.CARD_HIGH_RES_PALETTES.start + 128 * card_id
+        return self.rom[start, 128]
 
     def card_text(self, card_id):
         """ Returns memory region for a card text """

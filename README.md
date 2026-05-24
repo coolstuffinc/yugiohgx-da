@@ -56,10 +56,16 @@ Run the CLI:
 uv run ygogxda memory paths
 ```
 
+Extract card artworks:
+
+```bash
+uv run ygogxda sprites extract-cards --rom input.gba --output-dir cards
+```
+
 Patch a card image:
 
 ```bash
-uv run ygogxda memory patch-card-image --rom input.gba --card-id 2 --image new.png --output patched.gba
+uv run ygogxda sprites patch-card --rom input.gba --card-id 2 --image new.png --output patched.gba
 ```
 
 Patch a string table entry:

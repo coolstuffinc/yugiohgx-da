@@ -16,6 +16,7 @@ from ygogxda.memory import MemoryEmulator
 from ygogxda.passwords import YugiohPasswords
 from ygogxda.memory_map import list_memory_paths
 from ygogxda.memory_ops import (
+    CARD_IMAGE_BLOCKS,
     DUELIST_SPRITE_BLOCKS,
     LOCATION_THUMB_BLOCKS,
     extract_card_artworks,
@@ -173,21 +174,32 @@ class TestMemoryOperations(unittest.TestCase):
             os.unlink(source)
             os.unlink(output)
 
-    def test_patch_card_image_writes_blocked_layout(self):
+    def test_patch_card_image_writes_bitmap_and_palette(self):
         source = self._write_temp_rom()
         output = self._make_temp_path(".gba")
         image_path = self._make_temp_path(".png")
         try:
-            pixels = np.arange(80 * 80, dtype=np.uint8).reshape(80, 80)
-            Image.fromarray(pixels, mode="L").save(image_path)
+            colors = [(0, 0, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
+            pixels = np.arange(80 * 80, dtype=np.uint8).reshape(80, 80) % len(colors)
+            save_paletted_image(image_path, colors, pixels)
 
             patch_card_image(source, 0, image_path, output)
-            memory = MemoryEmulator(output)
-            card_region = memory[YugiohROM.CARD_HIGH_RES_BITMAPS.start, 80 * 80]
-            patched = bytes(card_region.read_bytes(80 * 80))
+            rom = YugiohROM(output)
+            bitmap_region = rom.card_artwork_bitmap(0)
+            palette_region = rom.card_artwork_palette(0)
+            patched = bytes(bitmap_region.read_bytes(80 * 80))
 
-            expected = split_blocks(pixels, (10, 10)).flatten().astype(np.uint8).tobytes()
+            expected = split_blocks(pixels, CARD_IMAGE_BLOCKS).flatten().astype(np.uint8).tobytes()
             self.assertEqual(patched, expected)
+            self.assertNotEqual(bytes(palette_region.read_bytes(128)), b"\x00" * 128)
+            artwork_image = next(iter(rom.card_images))
+            with Image.open(image_path) as input_image:
+                self.assertTrue(
+                    np.array_equal(
+                        np.asarray(artwork_image.convert("RGB")),
+                        np.asarray(input_image.convert("RGB")),
+                    )
+                )
         finally:
             os.unlink(source)
             os.unlink(output)
@@ -353,6 +365,32 @@ class TestMemoryOperations(unittest.TestCase):
         patch_location_thumb_mock.assert_called_once_with(
             "game.gba", "night", 2, "thumb.png", "patched.gba"
         )
+        self.assertEqual(result, 0)
+
+    def test_cli_build_parser_supports_card_patch_commands(self):
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "sprites",
+                "patch-card",
+                "--rom",
+                "game.gba",
+                "--card-id",
+                "2",
+                "--image",
+                "card.png",
+                "--output",
+                "patched.gba",
+            ]
+        )
+
+        self.assertEqual(args.command, "sprites")
+        self.assertEqual(args.sprites_command, "patch-card")
+        with patch("ygogxda.cli.patch_card_image") as patch_card_image_mock:
+            result = args.func(args)
+
+        patch_card_image_mock.assert_called_once_with("game.gba", 2, "card.png", "patched.gba")
         self.assertEqual(result, 0)
 
 
