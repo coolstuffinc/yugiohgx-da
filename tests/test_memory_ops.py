@@ -1,3 +1,4 @@
+import itertools
 import os
 import struct
 import sys
@@ -209,7 +210,7 @@ class TestMemoryOperations(unittest.TestCase):
             expected_bitmap = split_blocks(pixels, DUELIST_SPRITE_BLOCKS).flatten().astype(np.uint8).tobytes()
             self.assertEqual(bytes(bitmap_region.read_bytes(4096)), expected_bitmap)
             self.assertNotEqual(bytes(palette_region.read_bytes(128)), b"\x00" * 128)
-            sprite_image = list(rom.duelist_sprites())[0][1]
+            sprite_image = next(iter(rom.duelist_sprites()))[1]
             with Image.open(image_path) as input_image:
                 self.assertTrue(
                     np.array_equal(
@@ -239,7 +240,7 @@ class TestMemoryOperations(unittest.TestCase):
             expected_bitmap = split_blocks(pixels, LOCATION_THUMB_BLOCKS).flatten().astype(np.uint8).tobytes()
             self.assertEqual(bytes(bitmap_region.read_bytes(6144)), expected_bitmap)
             self.assertNotEqual(bytes(palette_region.read_bytes(128)), b"\x00" * 128)
-            thumb_image = list(rom.location_thumbs())[2][2]
+            thumb_image = next(itertools.islice(rom.location_thumbs(), 2, 3))[2]
             with Image.open(image_path) as input_image:
                 self.assertTrue(
                     np.array_equal(

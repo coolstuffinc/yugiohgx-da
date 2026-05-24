@@ -63,7 +63,7 @@ def _load_indexed_image(image_file, size, palette_entries):
 
 
 def _patch_indexed_image(bitmap_region, palette_region, pixels, palette_bytes, blocks):
-    bitmap_region[:] = split_blocks(pixels, blocks).flatten().astype(np.uint8).tobytes()
+    bitmap_region[:] = split_blocks(pixels, blocks).flatten().tobytes()
     palette_region[:] = palette_bytes
 
 
