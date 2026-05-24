@@ -14,6 +14,10 @@ _BLUE_EYES_BYTES = (
     .to_bytes(32, 'big')
 )
 _BLUE_EYES_TEXT = 'ブルーアイズ\u30fbホワイト\u30fbドラゴン'
+_WINGED_DRAGON_READING_BYTES = bytes.fromhex(
+    "f1 a3 f1 c5 f1 a2 f1 cd f1 b9 f1 bd f1 c6 f1 c3 f1 8a f1 c5 f1 c0 f1 81"
+)
+_WINGED_DRAGON_READING_TEXT = "とりでをまもるよくりゅう"
 
 
 class TestDecode(unittest.TestCase):
@@ -24,6 +28,14 @@ class TestDecode(unittest.TestCase):
         # ア U+30A2 → F1 D0,  パ U+30D1 → F1 FF
         self.assertEqual(decode(bytes([0xF1, 0xD0])), 'ア')
         self.assertEqual(decode(bytes([0xF1, 0xFF])), 'パ')
+
+    def test_f1_range_hiragana_う_to_を(self):
+        # う U+3046 → F1 81,  を U+3092 → F1 CD
+        self.assertEqual(decode(bytes([0xF1, 0x81])), 'う')
+        self.assertEqual(decode(bytes([0xF1, 0xCD])), 'を')
+
+    def test_mixed_hiragana_sample_from_rom(self):
+        self.assertEqual(decode(_WINGED_DRAGON_READING_BYTES), _WINGED_DRAGON_READING_TEXT)
 
     def test_f2_range_ヒ_to_ヾ(self):
         # ヒ U+30D2 → F2 80,  ン U+30F3 → F2 A1,  ヾ U+30FE → F2 AC
@@ -62,6 +74,15 @@ class TestEncode(unittest.TestCase):
 
     def test_f1_range_パ(self):
         self.assertEqual(encode('パ'), bytes([0xF1, 0xFF]))
+
+    def test_f1_range_hiragana_う(self):
+        self.assertEqual(encode('う'), bytes([0xF1, 0x81]))
+
+    def test_f1_range_hiragana_を(self):
+        self.assertEqual(encode('を'), bytes([0xF1, 0xCD]))
+
+    def test_mixed_hiragana_sample_from_rom(self):
+        self.assertEqual(encode(_WINGED_DRAGON_READING_TEXT), _WINGED_DRAGON_READING_BYTES)
 
     def test_f2_range_ヒ(self):
         self.assertEqual(encode('ヒ'), bytes([0xF2, 0x80]))
@@ -105,6 +126,9 @@ class TestRoundtrip(unittest.TestCase):
 
     def test_mixed_ascii_and_katakana(self):
         self._roundtrip('No.' + 'ドラゴン')
+
+    def test_hiragana_roundtrip_from_rom_sample(self):
+        self._roundtrip(_WINGED_DRAGON_READING_TEXT)
 
 
 if __name__ == '__main__':

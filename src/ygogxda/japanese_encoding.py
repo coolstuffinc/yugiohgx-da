@@ -2,6 +2,10 @@
 #
 # Each Japanese character is stored as a 2-byte sequence [prefix, code] where:
 #
+#   Hiragana (U+3046 – U+3092) → prefix 0xF1, code 0x81–0xCD
+#     decode: unicode = 0x2FC5 + code
+#     encode: rom = unicode + 0xC13B
+#
 #   Katakana (U+30A2 – U+30D1) → prefix 0xF1, code 0xD0–0xFF
 #     decode: unicode = 0x2FD2 + code
 #     encode: rom = unicode + 0xC12E  (code byte already ≥ 0x80)
@@ -21,6 +25,7 @@
 # Null bytes (0x00) are treated as string terminators and skipped on decode.
 
 _KATAKANA_OFFSET = 0xC12E
+_HIRAGANA_OFFSET = 0xC13B
 
 # Characters whose ROM encoding does not follow the linear formula.
 _EXCEPTIONS_ENCODE = {
@@ -38,6 +43,10 @@ def encode(text: str) -> bytes:
     for char in text:
         if char in _EXCEPTIONS_ENCODE:
             result.extend(_EXCEPTIONS_ENCODE[char])
+        elif '\u3046' <= char <= '\u3092':
+            rom = ord(char) + _HIRAGANA_OFFSET
+            result.append((rom >> 8) & 0xFF)
+            result.append(rom & 0xFF)
         elif '\u30A2' <= char <= '\u30FE':
             rom = ord(char) + _KATAKANA_OFFSET
             if (rom & 0xFF) < 0x80:
@@ -71,6 +80,11 @@ def decode(data: bytes) -> str:
                 continue
             prefix = byte
             code = data[i + 1]
+            if prefix == 0xF1 and 0x81 <= code < 0xD0:
+                # Hiragana う (U+3046) to を (U+3092)
+                result.append(chr(0x2FC5 + code))
+                i += 2
+                continue
             if prefix == 0xF1 and code >= 0xD0:
                 # Katakana ア (U+30A2) to パ (U+30D1)
                 result.append(chr(0x2FD2 + code))
