@@ -38,20 +38,25 @@ def _convert_palette_to_gba(image, palette_entries):
     return gba_palette.tobytes()
 
 
+def _quantize_image(image, palette_entries):
+    return image.convert("RGB").quantize(colors=palette_entries)
+
+
 def _load_indexed_image(image_file, size, palette_entries):
+    image_path = Path(image_file)
+    if not image_path.is_file():
+        raise FileNotFoundError(f"Input image file does not exist: {image_file}")
+
     image = Image.open(image_file)
     if image.size != size:
         image = image.resize(size, Image.Resampling.NEAREST)
 
-    if image.mode == "P":
-        indexed = image
-    else:
-        indexed = image.convert("RGB").quantize(colors=palette_entries)
+    indexed = image if image.mode == "P" else _quantize_image(image, palette_entries)
 
     pixels = np.asarray(indexed, dtype=np.uint8)
     max_index = int(pixels.max())
     if max_index >= palette_entries:
-        indexed = indexed.convert("RGB").quantize(colors=palette_entries)
+        indexed = _quantize_image(indexed, palette_entries)
         pixels = np.asarray(indexed, dtype=np.uint8)
 
     return pixels, _convert_palette_to_gba(indexed, palette_entries)

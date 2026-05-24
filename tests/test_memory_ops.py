@@ -115,7 +115,7 @@ def build_synthetic_rom():
     return payload
 
 
-def save_paletted_image(path, size, colors, pixels):
+def save_paletted_image(path, colors, pixels):
     image = Image.fromarray(np.asarray(pixels, dtype=np.uint8), mode="P")
     palette = []
     for color in colors:
@@ -187,7 +187,7 @@ class TestMemoryOperations(unittest.TestCase):
         try:
             colors = [(0, 0, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
             pixels = np.arange(64 * 64, dtype=np.uint8).reshape(64, 64) % len(colors)
-            save_paletted_image(image_path, (64, 64), colors, pixels)
+            save_paletted_image(image_path, colors, pixels)
 
             patch_duelist_sprite(source, 0, 1, image_path, output)
 
@@ -217,7 +217,7 @@ class TestMemoryOperations(unittest.TestCase):
         try:
             colors = [(0, 0, 0), (255, 255, 0), (255, 0, 255), (0, 255, 255)]
             pixels = np.arange(64 * 96, dtype=np.uint8).reshape(64, 96) % len(colors)
-            save_paletted_image(image_path, (96, 64), colors, pixels)
+            save_paletted_image(image_path, colors, pixels)
 
             patch_location_thumb(source, "night", 2, image_path, output)
 
