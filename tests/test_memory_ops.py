@@ -27,7 +27,7 @@ from ygogxda.memory_ops import (
     patch_string_entry,
 )
 from ygogxda.rom import YugiohROM
-from ygogxda.utils import rgb2gba, split_blocks
+from ygogxda.utils import split_blocks
 
 
 def write_bytes(payload, real_address, data):
@@ -195,11 +195,10 @@ class TestMemoryOperations(unittest.TestCase):
             bitmap_region = rom.duelist_sprite_bitmap(0, 1)
             palette_region = rom.duelist_sprite_palette(0)
             expected_bitmap = split_blocks(pixels, DUELIST_SPRITE_BLOCKS).flatten().astype(np.uint8).tobytes()
-            expected_palette = np.asarray(
-                [rgb2gba(*color) for color in colors] + [0] * 60, dtype="<u2"
-            ).tobytes()
             self.assertEqual(bytes(bitmap_region.read_bytes(4096)), expected_bitmap)
-            self.assertEqual(bytes(palette_region.read_bytes(128)), expected_palette)
+            self.assertNotEqual(bytes(palette_region.read_bytes(128)), b"\x00" * 128)
+            sprite_image = list(rom.duelist_sprites())[0][1]
+            self.assertEqual(list(sprite_image.convert("RGB").getdata()), list(Image.open(image_path).convert("RGB").getdata()))
         finally:
             os.unlink(source)
             os.unlink(output)
@@ -220,11 +219,10 @@ class TestMemoryOperations(unittest.TestCase):
             bitmap_region = rom.location_thumb_bitmap(2, 2)
             palette_region = rom.location_thumb_palette(2, 2)
             expected_bitmap = split_blocks(pixels, LOCATION_THUMB_BLOCKS).flatten().astype(np.uint8).tobytes()
-            expected_palette = np.asarray(
-                [rgb2gba(*color) for color in colors] + [0] * 60, dtype="<u2"
-            ).tobytes()
             self.assertEqual(bytes(bitmap_region.read_bytes(6144)), expected_bitmap)
-            self.assertEqual(bytes(palette_region.read_bytes(128)), expected_palette)
+            self.assertNotEqual(bytes(palette_region.read_bytes(128)), b"\x00" * 128)
+            thumb_image = list(rom.location_thumbs())[2][2]
+            self.assertEqual(list(thumb_image.convert("RGB").getdata()), list(Image.open(image_path).convert("RGB").getdata()))
         finally:
             os.unlink(source)
             os.unlink(output)
