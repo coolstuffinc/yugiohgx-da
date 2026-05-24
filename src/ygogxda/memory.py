@@ -93,10 +93,11 @@ class MemoryEmulator:
         return integers
 
     def read_bytes(self, size, offset=0):
+        size = int(size)
+        offset = int(offset)
         key = mem_region(offset,size)
         virt_key = key if is_virt_address(self.region,key) \
                        else real_to_virt(key)
         payload = self._payload[virt_key]
         return payload
-
 
