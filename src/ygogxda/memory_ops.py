@@ -24,6 +24,22 @@ LOCATION_THUMB_SIZE = (96, 64)
 LOCATION_THUMB_BLOCKS = (12, 8)
 LOCATION_THUMB_PALETTE_COLORS = 64
 
+SUBDIR_CARDS = Path("sprites") / "cards"
+SUBDIR_DUELISTS = Path("sprites") / "duelists"
+SUBDIR_LOCATIONS = Path("sprites") / "locations"
+SUBDIR_STRINGS = Path("strings")
+SUBDIR_MEMORY = Path("memory")
+
+
+def canonical_output_path(rom_file):
+    """Return the canonical extraction directory for a ROM file.
+
+    Given ``rom_file`` (e.g. ``ygogxda.gba``), returns
+    ``ygogxda.gba.extracted/`` next to the ROM file.
+    """
+    p = Path(rom_file)
+    return p.with_name(p.name + ".extracted")
+
 
 def _ensure_output_dir(output_dir):
     path = Path(output_dir)
@@ -83,7 +99,10 @@ def _decode_string_payload(payload, encoding):
             return raw.decode(encoding, errors="replace")
 
 
-def dump_region(rom_file, path, output_file):
+def dump_region(rom_file, path, output_file=None):
+    if output_file is None:
+        output_file = canonical_output_path(rom_file) / SUBDIR_MEMORY / f"{path}.bin"
+        _ensure_output_dir(output_file.parent)
     memory = MemoryEmulator(rom_file)
     region = resolve_memory_path(path).region
     payload = memory[region].read_bytes(region.stop - region.start)
@@ -106,23 +125,29 @@ def patch_card_image(rom_file, card_id, image_file, output_rom):
     rom.save(output_rom)
 
 
-def extract_card_artworks(rom_file, output_dir):
+def extract_card_artworks(rom_file, output_dir=None):
     rom = YugiohROM(rom_file)
+    if output_dir is None:
+        output_dir = canonical_output_path(rom_file) / SUBDIR_CARDS
     output_path = _ensure_output_dir(output_dir)
     for index, artwork in enumerate(rom.card_images):
         artwork.save(output_path / f"card-{index:04d}.png")
 
 
-def extract_duelist_sprites(rom_file, output_dir):
+def extract_duelist_sprites(rom_file, output_dir=None):
     rom = YugiohROM(rom_file)
+    if output_dir is None:
+        output_dir = canonical_output_path(rom_file) / SUBDIR_DUELISTS
     output_path = _ensure_output_dir(output_dir)
     for duelist_index, variations in enumerate(rom.duelist_sprites()):
         for variation_index, image in enumerate(variations):
             image.save(output_path / f"duelist-{duelist_index:02d}-variation-{variation_index}.png")
 
 
-def extract_location_thumbs(rom_file, output_dir):
+def extract_location_thumbs(rom_file, output_dir=None):
     rom = YugiohROM(rom_file)
+    if output_dir is None:
+        output_dir = canonical_output_path(rom_file) / SUBDIR_LOCATIONS
     output_path = _ensure_output_dir(output_dir)
     for period, images in zip(LOCATION_PERIODS, rom.location_thumbs()):
         for location_index, image in enumerate(images):
@@ -211,9 +236,14 @@ def get_string_entry(rom_file, table_name, index):
 def extract_string_table(rom_file, table_name, output_file=None, index=None):
     """Extract string table entries to CSV.
 
-    Writes to *output_file* when provided, otherwise to stdout.  Pass *index*
-    to restrict output to a single entry (requires *table_name*).
+    Writes to *output_file* when provided.  When *output_file* is ``None`` and
+    *index* is also ``None``, writes to the canonical path
+    ``<rom>.extracted/strings/<table_name>.csv``.  When *output_file* is
+    ``None`` but *index* is given, writes to stdout.
     """
+    if output_file is None and index is None:
+        output_file = canonical_output_path(rom_file) / SUBDIR_STRINGS / f"{table_name}.csv"
+        _ensure_output_dir(output_file.parent)
     memory = MemoryEmulator(rom_file)
     table = resolve_string_table(table_name)
     strings_region = resolve_memory_path(table.strings_path).region

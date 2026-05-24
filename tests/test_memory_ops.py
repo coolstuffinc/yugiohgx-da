@@ -5,6 +5,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -20,6 +21,13 @@ from ygogxda.memory_ops import (
     CARD_IMAGE_BLOCKS,
     DUELIST_SPRITE_BLOCKS,
     LOCATION_THUMB_BLOCKS,
+    SUBDIR_CARDS,
+    SUBDIR_DUELISTS,
+    SUBDIR_LOCATIONS,
+    SUBDIR_STRINGS,
+    SUBDIR_MEMORY,
+    canonical_output_path,
+    dump_region,
     extract_card_artworks,
     extract_duelist_sprites,
     extract_location_thumbs,
@@ -590,6 +598,221 @@ class TestMemoryOperations(unittest.TestCase):
 
         mock_bulk.assert_called_once_with("game.gba", "card_names_en", "names.csv", "patched.gba")
         self.assertEqual(result, 0)
+
+
+class TestCanonicalOutputPath(unittest.TestCase):
+    def test_appends_extracted_suffix(self):
+        result = canonical_output_path("ygogxda.gba")
+        self.assertEqual(result.name, "ygogxda.gba.extracted")
+
+    def test_preserves_parent_directory(self):
+        result = canonical_output_path("/some/path/game.gba")
+        self.assertEqual(result.parent, Path("/some/path"))
+        self.assertEqual(result.name, "game.gba.extracted")
+
+    def test_subdir_constants_are_under_sprites(self):
+        self.assertEqual(str(SUBDIR_CARDS), str(Path("sprites") / "cards"))
+        self.assertEqual(str(SUBDIR_DUELISTS), str(Path("sprites") / "duelists"))
+        self.assertEqual(str(SUBDIR_LOCATIONS), str(Path("sprites") / "locations"))
+
+    def test_subdir_strings_and_memory_constants(self):
+        self.assertEqual(str(SUBDIR_STRINGS), "strings")
+        self.assertEqual(str(SUBDIR_MEMORY), "memory")
+
+
+class TestExtractUsesCanonicalPath(unittest.TestCase):
+    def _write_temp_rom(self, directory):
+        payload = build_synthetic_rom()
+        path = os.path.join(directory, "game.gba")
+        with open(path, "wb") as f:
+            f.write(payload)
+        return path
+
+    def test_extract_card_artworks_uses_canonical_path_when_no_output_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rom_path = self._write_temp_rom(tmpdir)
+            images = iter([Image.new("P", (80, 80), color=3), Image.new("P", (80, 80), color=7)])
+            with patch.object(YugiohROM, "_read_card_artworks", return_value=images):
+                extract_card_artworks(rom_path)
+            expected_dir = os.path.join(tmpdir, "game.gba.extracted", "sprites", "cards")
+            self.assertTrue(os.path.exists(os.path.join(expected_dir, "card-0000.png")))
+            self.assertTrue(os.path.exists(os.path.join(expected_dir, "card-0001.png")))
+
+    def test_extract_duelist_sprites_uses_canonical_path_when_no_output_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rom_path = self._write_temp_rom(tmpdir)
+            sprite_sets = iter([
+                [Image.new("P", (64, 64), color=1), Image.new("P", (64, 64), color=2)],
+            ])
+            with (
+                patch.object(YugiohROM, "_read_card_artworks", return_value=iter(())),
+                patch.object(YugiohROM, "duelist_sprites", return_value=sprite_sets),
+            ):
+                extract_duelist_sprites(rom_path)
+            expected_dir = os.path.join(tmpdir, "game.gba.extracted", "sprites", "duelists")
+            self.assertTrue(os.path.exists(os.path.join(expected_dir, "duelist-00-variation-0.png")))
+            self.assertTrue(os.path.exists(os.path.join(expected_dir, "duelist-00-variation-1.png")))
+
+    def test_extract_location_thumbs_uses_canonical_path_when_no_output_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rom_path = self._write_temp_rom(tmpdir)
+            thumbs = iter([
+                [Image.new("P", (96, 64), color=1)],
+                [Image.new("P", (96, 64), color=2)],
+                [Image.new("P", (96, 64), color=3)],
+            ])
+            with (
+                patch.object(YugiohROM, "_read_card_artworks", return_value=iter(())),
+                patch.object(YugiohROM, "location_thumbs", return_value=thumbs),
+            ):
+                extract_location_thumbs(rom_path)
+            expected_dir = os.path.join(tmpdir, "game.gba.extracted", "sprites", "locations")
+            self.assertTrue(os.path.exists(os.path.join(expected_dir, "location-morning-00.png")))
+            self.assertTrue(os.path.exists(os.path.join(expected_dir, "location-afternoon-00.png")))
+            self.assertTrue(os.path.exists(os.path.join(expected_dir, "location-night-00.png")))
+
+
+class TestCLIExtractCanonicalPath(unittest.TestCase):
+    def test_cli_sprites_extract_card_without_output_dir(self):
+        parser = build_parser()
+        args = parser.parse_args(["sprites", "extract", "card", "--rom", "game.gba"])
+        self.assertIsNone(args.output_dir)
+        with patch("ygogxda.cli.extract_card_artworks") as mock:
+            result = args.func(args)
+        mock.assert_called_once_with("game.gba", None)
+        self.assertEqual(result, 0)
+
+    def test_cli_sprites_extract_duelist_without_output_dir(self):
+        parser = build_parser()
+        args = parser.parse_args(["sprites", "extract", "duelist", "--rom", "game.gba"])
+        self.assertIsNone(args.output_dir)
+        with patch("ygogxda.cli.extract_duelist_sprites") as mock:
+            result = args.func(args)
+        mock.assert_called_once_with("game.gba", None)
+        self.assertEqual(result, 0)
+
+    def test_cli_sprites_extract_location_without_output_dir(self):
+        parser = build_parser()
+        args = parser.parse_args(["sprites", "extract", "location-thumb", "--rom", "game.gba"])
+        self.assertIsNone(args.output_dir)
+        with patch("ygogxda.cli.extract_location_thumbs") as mock:
+            result = args.func(args)
+        mock.assert_called_once_with("game.gba", None)
+        self.assertEqual(result, 0)
+
+    def test_cli_sprites_extract_card_with_explicit_output_dir(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["sprites", "extract", "card", "--rom", "game.gba", "--output-dir", "mydir"]
+        )
+        self.assertEqual(args.output_dir, "mydir")
+        with patch("ygogxda.cli.extract_card_artworks") as mock:
+            result = args.func(args)
+        mock.assert_called_once_with("game.gba", "mydir")
+        self.assertEqual(result, 0)
+
+
+class TestExtractStringTableCanonicalPath(unittest.TestCase):
+    def _write_temp_rom(self, directory):
+        payload = build_synthetic_rom()
+        path = os.path.join(directory, "game.gba")
+        with open(path, "wb") as f:
+            f.write(payload)
+        return path
+
+    def test_extract_string_table_uses_canonical_path_when_no_output_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rom_path = self._write_temp_rom(tmpdir)
+            extract_string_table(rom_path, "card_names_en")
+            expected = os.path.join(tmpdir, "game.gba.extracted", "strings", "card_names_en.csv")
+            self.assertTrue(os.path.exists(expected))
+            with open(expected, newline="", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+            self.assertEqual(len(rows), 1200)
+
+    def test_extract_string_table_uses_explicit_output_file_when_given(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rom_path = self._write_temp_rom(tmpdir)
+            explicit = os.path.join(tmpdir, "out.csv")
+            extract_string_table(rom_path, "card_names_en", output_file=explicit)
+            self.assertTrue(os.path.exists(explicit))
+
+    def test_extract_string_table_with_index_writes_to_stdout(self):
+        import io
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rom_path = self._write_temp_rom(tmpdir)
+            captured = io.StringIO()
+            with patch("sys.stdout", captured):
+                extract_string_table(rom_path, "card_names_en", index=0)
+            output = captured.getvalue()
+            self.assertIn("index", output)
+            self.assertIn("text", output)
+
+
+class TestDumpRegionCanonicalPath(unittest.TestCase):
+    def _write_temp_rom(self, directory):
+        payload = build_synthetic_rom()
+        path = os.path.join(directory, "game.gba")
+        with open(path, "wb") as f:
+            f.write(payload)
+        return path
+
+    def test_dump_region_uses_canonical_path_when_no_output_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rom_path = self._write_temp_rom(tmpdir)
+            dump_region(rom_path, "strings.cards.names.en")
+            expected = os.path.join(
+                tmpdir, "game.gba.extracted", "memory", "strings.cards.names.en.bin"
+            )
+            self.assertTrue(os.path.exists(expected))
+            self.assertGreater(os.path.getsize(expected), 0)
+
+    def test_dump_region_uses_explicit_output_file_when_given(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rom_path = self._write_temp_rom(tmpdir)
+            explicit = os.path.join(tmpdir, "out.bin")
+            dump_region(rom_path, "strings.cards.names.en", explicit)
+            self.assertTrue(os.path.exists(explicit))
+            self.assertGreater(os.path.getsize(explicit), 0)
+
+
+class TestCLICanonicalPathStringsAndMemory(unittest.TestCase):
+    def test_cli_memory_dump_without_output(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["memory", "dump", "--rom", "game.gba", "--path", "strings.cards.names.en"]
+        )
+        self.assertIsNone(args.output)
+        with patch("ygogxda.cli.dump_region") as mock:
+            result = args.func(args)
+        mock.assert_called_once_with("game.gba", "strings.cards.names.en", None)
+        self.assertEqual(result, 0)
+
+    def test_cli_memory_dump_with_explicit_output(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["memory", "dump", "--rom", "game.gba", "--path", "strings.cards.names.en", "--output", "out.bin"]
+        )
+        self.assertEqual(args.output, "out.bin")
+        with patch("ygogxda.cli.dump_region") as mock:
+            result = args.func(args)
+        mock.assert_called_once_with("game.gba", "strings.cards.names.en", "out.bin")
+        self.assertEqual(result, 0)
+
+    def test_cli_strings_extract_all_tables_no_output(self):
+        parser = build_parser()
+        args = parser.parse_args(["strings", "extract", "--rom", "game.gba"])
+        self.assertIsNone(args.table)
+        self.assertIsNone(args.output)
+        with patch("ygogxda.cli.extract_string_table") as mock:
+            result = args.func(args)
+        self.assertEqual(result, 0)
+        # Called once per canonical table, with no output_file (canonical default)
+        from ygogxda.memory_map import CANONICAL_STRING_TABLES
+        self.assertEqual(mock.call_count, len(CANONICAL_STRING_TABLES))
+        for call in mock.call_args_list:
+            self.assertEqual(call.args[0], "game.gba")
+            self.assertNotIn("output_file", call.kwargs)
 
 
 if __name__ == "__main__":
