@@ -36,9 +36,9 @@ class TestMemoryOperations(unittest.TestCase):
         source = self._write_temp_rom()
         output = tempfile.NamedTemporaryFile(suffix=".gba", delete=False).name
         try:
-            patch_string_entry(source, "card_names_en", 1, "Ze", output)
+            patch_string_entry(source, "card_names_en", 1, "Z", output)
             patched = get_string_entry(output, "card_names_en", 1)
-            self.assertEqual(patched, "Ze")
+            self.assertEqual(patched, "Z")
         finally:
             os.unlink(source)
             os.unlink(output)
