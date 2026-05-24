@@ -8,7 +8,10 @@ from .memory_ops import (
     extract_duelist_sprites,
     extract_location_thumbs,
     patch_card_image,
+    patch_duelist_sprite,
+    patch_location_thumb,
     patch_string_entry,
+    LOCATION_PERIODS,
 )
 
 
@@ -47,6 +50,16 @@ def _cmd_sprites_extract_duelists(args):
 
 def _cmd_sprites_extract_locations(args):
     extract_location_thumbs(args.rom, args.output_dir)
+    return 0
+
+
+def _cmd_sprites_patch_duelist(args):
+    patch_duelist_sprite(args.rom, args.duelist_index, args.variation_index, args.image, args.output)
+    return 0
+
+
+def _cmd_sprites_patch_location(args):
+    patch_location_thumb(args.rom, args.period, args.location_index, args.image, args.output)
     return 0
 
 
@@ -117,6 +130,34 @@ def build_parser():
         "--output-dir", required=True, help="Directory for extracted images"
     )
     extract_locations_parser.set_defaults(func=_cmd_sprites_extract_locations)
+
+    patch_duelist_parser = sprites_subparsers.add_parser(
+        "patch-duelist", help="Patch one duelist sprite variation from an input image"
+    )
+    patch_duelist_parser.add_argument("--rom", required=True, help="Input ROM file")
+    patch_duelist_parser.add_argument(
+        "--duelist-index", required=True, type=int, help="Duelist sprite set index"
+    )
+    patch_duelist_parser.add_argument(
+        "--variation-index", required=True, type=int, help="Sprite variation index"
+    )
+    patch_duelist_parser.add_argument("--image", required=True, help="Input image file")
+    patch_duelist_parser.add_argument("--output", required=True, help="Output ROM file")
+    patch_duelist_parser.set_defaults(func=_cmd_sprites_patch_duelist)
+
+    patch_location_parser = sprites_subparsers.add_parser(
+        "patch-location", help="Patch one academy location thumbnail from an input image"
+    )
+    patch_location_parser.add_argument("--rom", required=True, help="Input ROM file")
+    patch_location_parser.add_argument(
+        "--period", required=True, choices=LOCATION_PERIODS, help="Time of day variant"
+    )
+    patch_location_parser.add_argument(
+        "--location-index", required=True, type=int, help="Academy location index"
+    )
+    patch_location_parser.add_argument("--image", required=True, help="Input image file")
+    patch_location_parser.add_argument("--output", required=True, help="Output ROM file")
+    patch_location_parser.set_defaults(func=_cmd_sprites_patch_location)
 
     return parser
 
