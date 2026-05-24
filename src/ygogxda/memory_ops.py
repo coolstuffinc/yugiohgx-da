@@ -27,6 +27,8 @@ LOCATION_THUMB_PALETTE_COLORS = 64
 SUBDIR_CARDS = Path("sprites") / "cards"
 SUBDIR_DUELISTS = Path("sprites") / "duelists"
 SUBDIR_LOCATIONS = Path("sprites") / "locations"
+SUBDIR_STRINGS = Path("strings")
+SUBDIR_MEMORY = Path("memory")
 
 
 def canonical_output_path(rom_file):
@@ -97,7 +99,10 @@ def _decode_string_payload(payload, encoding):
             return raw.decode(encoding, errors="replace")
 
 
-def dump_region(rom_file, path, output_file):
+def dump_region(rom_file, path, output_file=None):
+    if output_file is None:
+        output_file = canonical_output_path(rom_file) / SUBDIR_MEMORY / f"{path}.bin"
+        _ensure_output_dir(output_file.parent)
     memory = MemoryEmulator(rom_file)
     region = resolve_memory_path(path).region
     payload = memory[region].read_bytes(region.stop - region.start)
@@ -231,9 +236,14 @@ def get_string_entry(rom_file, table_name, index):
 def extract_string_table(rom_file, table_name, output_file=None, index=None):
     """Extract string table entries to CSV.
 
-    Writes to *output_file* when provided, otherwise to stdout.  Pass *index*
-    to restrict output to a single entry (requires *table_name*).
+    Writes to *output_file* when provided.  When *output_file* is ``None`` and
+    *index* is also ``None``, writes to the canonical path
+    ``<rom>.extracted/strings/<table_name>.csv``.  When *output_file* is
+    ``None`` but *index* is given, writes to stdout.
     """
+    if output_file is None and index is None:
+        output_file = canonical_output_path(rom_file) / SUBDIR_STRINGS / f"{table_name}.csv"
+        _ensure_output_dir(output_file.parent)
     memory = MemoryEmulator(rom_file)
     table = resolve_string_table(table_name)
     strings_region = resolve_memory_path(table.strings_path).region
