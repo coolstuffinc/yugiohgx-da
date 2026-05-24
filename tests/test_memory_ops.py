@@ -30,6 +30,10 @@ from ygogxda.rom import YugiohROM
 from ygogxda.utils import split_blocks
 
 
+LOCATION_POINTER_TABLE_HEADER_SIZE = 24
+LOCATION_BITMAP_ENTRY_SIZE = 4 + 6144
+
+
 def write_bytes(payload, real_address, data):
     start = real_address - 0x08000000
     payload[start:start + len(data)] = data
@@ -93,23 +97,31 @@ def build_synthetic_rom():
     key = hashed ^ YugiohPasswords.padding(1)
     write_u32(payload, YugiohROM.CARD_PASSWORD_KEYS.start + 4, key)
 
-    duelists_table = YugiohROM.CHARACTERS_BITMAPS.start + 29 * 4
-    duelists_bitmaps = duelists_table + 5 * 4
+    duelists_table_offset = YugiohROM.CHARACTERS_BITMAPS.start + 29 * 4
+    duelists_bitmap_data_offset = duelists_table_offset + 5 * 4
     for index in range(29):
-        write_u32(payload, YugiohROM.CHARACTERS_BITMAPS.start + index * 4, duelists_table)
+        write_u32(payload, YugiohROM.CHARACTERS_BITMAPS.start + index * 4, duelists_table_offset)
         write_u32(payload, YugiohROM.CHARACTERS_PALETTES.start + index * 4, YugiohROM.CHARACTERS_PALETTES.start + 29 * 4)
     for variation in range(5):
-        write_u32(payload, duelists_table + variation * 4, duelists_bitmaps + variation * 4096)
+        write_u32(
+            payload,
+            duelists_table_offset + variation * 4,
+            duelists_bitmap_data_offset + variation * 4096,
+        )
 
-    locations_bitmap_table = YugiohROM.ACADEMY_LOCATIONS_THUMBS.start + 24
+    locations_bitmap_table = YugiohROM.ACADEMY_LOCATIONS_THUMBS.start + LOCATION_POINTER_TABLE_HEADER_SIZE
     locations_palette_table = locations_bitmap_table + 26 * 4
     locations_bitmap_data = locations_palette_table + 26 * 4
-    locations_palette_data = locations_bitmap_data + 26 * (4 + 6144)
+    locations_palette_data = locations_bitmap_data + 26 * LOCATION_BITMAP_ENTRY_SIZE
     for period in range(3):
         write_u32(payload, YugiohROM.ACADEMY_LOCATIONS_THUMBS.start + period * 4, locations_bitmap_table)
         write_u32(payload, YugiohROM.ACADEMY_LOCATIONS_THUMBS.start + 12 + period * 4, locations_palette_table)
     for location in range(26):
-        write_u32(payload, locations_bitmap_table + location * 4, locations_bitmap_data + location * (4 + 6144))
+        write_u32(
+            payload,
+            locations_bitmap_table + location * 4,
+            locations_bitmap_data + location * LOCATION_BITMAP_ENTRY_SIZE,
+        )
         write_u32(payload, locations_palette_table + location * 4, locations_palette_data + location * 128)
 
     return payload
