@@ -459,8 +459,8 @@ class TestMemoryOperations(unittest.TestCase):
         csv_path = self._make_temp_path(".csv")
         output = self._make_temp_path(".gba")
         try:
-            # Writing a 20-char string to every entry produces 1200 * 21 = 25 200 bytes,
-            # which exceeds the 20 475-byte CARD_NAMES_EN region.
+            # Writing a 20-char string to every entry produces 1200 * 21 = 25200 bytes,
+            # which exceeds the 20475-byte CARD_NAMES_EN region.
             long_text = "A" * 20
             with open(csv_path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)

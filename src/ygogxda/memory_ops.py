@@ -279,8 +279,7 @@ def patch_string_table_bulk(rom_file, table_name, csv_file, output_rom):
     new_total = sum(len(e) for e in encoded)
     if new_total > region_capacity:
         raise ValueError(
-            f"Rebuilt string table ({new_total} bytes) exceeds region capacity"
-            f" ({region_capacity} bytes)"
+            f"Rebuilt string table ({new_total} bytes) exceeds region capacity ({region_capacity} bytes)"
         )
 
     # Rebuild offsets
