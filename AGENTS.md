@@ -1,5 +1,7 @@
 # yugiohgx-da — Agent Guidance
 
+See `docs/` for GBA-specific format notes (card pile backgrounds, strings, encoding, etc.).
+
 ## Commands
 
 ```sh
@@ -36,7 +38,7 @@ GBA ROM is mapped at base address **0x08000000**. `MemoryEmulator` works with bo
 
 All `YugiohROM` region constants (e.g. `CARD_HIGH_RES_BITMAPS = slice(0x087CFACC, ...)`) use **real** addresses. The constructor reads from a `MemoryEmulator` that handles translation.
 
-## BIG_3 Layer API (card pile backgrounds)
+## Card pile background layer API
 
 `YugiohROM` has these card pile background methods:
 
@@ -45,7 +47,7 @@ All `YugiohROM` region constants (e.g. `CARD_HIGH_RES_BITMAPS = slice(0x087CFACC
 | `card_pile_background(index)` | `PIL.Image` | Composite image (all banks merged, 240×160) |
 | `card_pile_backgrounds()` | generator of `PIL.Image` | All 8 composites |
 | `card_pile_background_layers(index)` | `(layers_dict, pal_n, pal_payload)` | Per-bank images as `{bank: np.array}` (160×240, pixel values 0-15) |
-| `encode_card_pile_background(layers, pal_n, pal_payload)` | `bytes` (static) | Re-encode layers into BIG_3 format |
+| `encode_card_pile_background(layers, pal_n, pal_payload)` | `bytes` (static) | Re-encode layers into card pile background format |
 | `patch_card_pile_background(index, layers)` | `None` | Encode and write layers back into the ROM in-place |
 
 CLI:
@@ -64,7 +66,7 @@ The encode uses flip-aware global tile dedup (checks all 4 orientations: origina
 - Data stored as `[tile_row][tile_col][px_row][px_col]` — reshape with `(tiles_high, tiles_wide, 8, 8)`, then `join_blocks((tiles_high, tiles_wide))` from `utils.py`
 - Palette: 128 bytes = 64 × 16-bit little-endian GBA colors. Bit 15 is ignored by hardware. Use `image.putpalette(palette, rawmode="RGB;15")` for correct decoding.
 
-**4bpp tiled format** (card pile backgrounds — BIG_3):
+**4bpp tiled format** (card pile backgrounds):
 - Each tile is 32 bytes in standard GBA row-major nibble-packed format: 8 rows × 4 bytes per row. Each byte = 2 pixels (upper nibble = even/left column, lower nibble = odd/right column).
 - Background data structure (reverse-engineered from `FUN_080ad2b4`):
   1. `u16[0]` = palette color count (`pal_n`); `u16[1..3]` = same value (redundant)
@@ -76,7 +78,7 @@ The encode uses flip-aware global tile dedup (checks all 4 orientations: origina
 - The underlying file palette has ~43 colors spanning 3 banks. Bank separators at indices 0, 16, 32 each start with `0x7C1F`.
 - Rendered result: 240×160 pixels (30×20 tiles in a 32-wide map). Rely on `rom.card_pile_backgrounds()` or `rom.card_pile_background(index)` rather than manual decoding.
 
-### Reverse-engineering notes (BIG_3 / FUN_080ad2b4)
+### Reverse-engineering notes (FUN_080ad2b4)
 
 The game function `FUN_080ad2b4` loads card pile backgrounds. Key observations:
 
@@ -108,7 +110,7 @@ However, the original screen entries in the ROM file have their own palette bank
 **Common pitfalls:**
 - Bitplane-interleaved 4bpp (used by some GBA tools) produces magenta "splattered" output (~31% pixel value 0). Always use row-major nibble-packed.
 - Tile flip bits (H/V) are pre-applied when decoding to layer images. The encoder re-detects flips during dedup.
-- Palette bank 0 in screen entries accesses GBA palette bank 0 (PAL+0..31), which may contain data loaded by a prior operation (e.g., main background). Not all 3 banks are purely from the BIG_3 entry.
+- Palette bank 0 in screen entries accesses GBA palette bank 0 (PAL+0..31), which may contain data loaded by a prior operation (e.g., main background). Not all 3 banks are purely from the card pile background entry.
 
 **Sprite dimensions:**
 | Resource | Size | Tiles | Palette colors |
@@ -121,7 +123,7 @@ However, the original screen entries in the ROM file have their own palette bank
 ## Known regions (coverage.py)
 
 Tokens (BIG_2): `0x090A0610` — pointer table (14 entries), each entry = palette(0x80) + pixel_data(0x1900), stride 0x1980. Some entries share pointers.
-Card pile BG / BIG_3: `0x092515F4` — 8 entries, 4bpp tiled, variable-sized, format described above.
+Card pile backgrounds: `0x092515F4` — 8 entries, 4bpp tiled, variable-sized, format described above.
 Characters: `0x091F24DC` — bitmaps, `0x09250780` — palettes; 29 duelists × 5 pose variations.
 Location thumbs: `0x09772E14` — pointer table with 3 periods × 26 locations.
 

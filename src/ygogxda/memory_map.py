@@ -52,7 +52,7 @@ CANONICAL_MEMORY_PATHS = {
     "sprites.card_piles": MemoryPath(
         "sprites.card_piles",
         YugiohROM.DUEL_FIELD_BG,
-        "Card pile background BIG_3 entries (8)",
+        "Card pile background entries (8)",
     ),
     "strings.cards.names.en": MemoryPath(
         "strings.cards.names.en",
