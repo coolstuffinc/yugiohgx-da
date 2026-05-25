@@ -37,3 +37,42 @@ hashed[2] = digits[2] + hashed[1]*16
 digits[2] = hashed[1]*16 - hashed[2]
 
 digits[2] = digits[1]*16 - hashed[2]
+
+========================================
+2026-05-24: Card Stats Search Progress
+========================================
+
+WHAT WE'VE FOUND:
+
+1. The Ghidra pointers PTR_DAT_080a68bc -> 0x09430be0 and
+   PTR_DAT_080a68c0 -> 0x09430f10 point to the EXAM QUESTION database,
+   NOT the card stats table. Confirmed by reading template strings:
+   - card[0]: "Dummy Examination"
+   - card[1]: "Which monster has a Flip Effect?"
+   - card[4]: "What do you need to Ritual Summon "%1"?"
+
+2. Exam database structure (at 0x09430f10 + offset_table[i]):
+   - u16[0] (off 0x00): type/header (0x2231=exam about card, 0x2232=exam group)
+   - u16[1] (off 0x02): card ID (e.g., 4007 for Blue-Eyes)
+   - u16[5] (off 0x0a): answer option 1 ID
+   - u16[6] (off 0x0c): answer option 2 ID  
+   - u16[7] (off 0x0e): answer option 3 ID
+   - u16[9] (off 0x12): offset to template string (relative to structure start)
+   - off 0x1c+: template string (null-terminated)
+   - Structure is variable-length (includes inline template string)
+
+3. Offset table at 0x09430be0 has 1200 entries (indices 0-1199).
+
+4. replace_cardname_in_template (FUN_080a6634) uses %1-%8 to reference 
+   fields from a card stats struct at param_1, but the function's callers
+   pass the EXAM database structure, not the actual card stats.
+
+5. ATK=3000 and DEF=2500 are NOT stored as plain uint16 anywhere in the ROM.
+   Could be encoded as: uint8*100, bit-packed, or in a non-obvious format.
+
+STILL NEED TO FIND:
+- Card stats table: ATK, DEF, Level, Attribute, MonsterType, CardType
+- Likely a fixed-size structure per ordinal ID (0-1200)
+- Search near other card data tables (0x087a8620 region)
+- Search for functions that render ATK/DEF on screen
+- Try looking for the card stats as a packed structure
