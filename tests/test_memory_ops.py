@@ -11,7 +11,9 @@ from unittest.mock import patch
 import numpy as np
 from PIL import Image
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 
 from ygogxda.cli import build_parser
 from ygogxda.memory import MemoryEmulator
@@ -49,7 +51,7 @@ LOCATION_BITMAP_ENTRY_SIZE = 4 + 6144
 
 def write_bytes(payload, real_address, data):
     start = real_address - 0x08000000
-    payload[start:start + len(data)] = data
+    payload[start : start + len(data)] = data
 
 
 def write_u16(payload, real_address, value):
@@ -119,8 +121,16 @@ def build_synthetic_rom():
     duelists_table_offset = YugiohROM.CHARACTERS_BITMAPS.start + 29 * 4
     duelists_bitmap_data_offset = duelists_table_offset + 5 * 4
     for index in range(29):
-        write_u32(payload, YugiohROM.CHARACTERS_BITMAPS.start + index * 4, duelists_table_offset)
-        write_u32(payload, YugiohROM.CHARACTERS_PALETTES.start + index * 4, YugiohROM.CHARACTERS_PALETTES.start + 29 * 4)
+        write_u32(
+            payload,
+            YugiohROM.CHARACTERS_BITMAPS.start + index * 4,
+            duelists_table_offset,
+        )
+        write_u32(
+            payload,
+            YugiohROM.CHARACTERS_PALETTES.start + index * 4,
+            YugiohROM.CHARACTERS_PALETTES.start + 29 * 4,
+        )
     for variation in range(5):
         write_u32(
             payload,
@@ -128,20 +138,34 @@ def build_synthetic_rom():
             duelists_bitmap_data_offset + variation * 4096,
         )
 
-    locations_bitmap_table = YugiohROM.ACADEMY_LOCATIONS_THUMBS.start + LOCATION_POINTER_TABLE_HEADER_SIZE
+    locations_bitmap_table = (
+        YugiohROM.ACADEMY_LOCATIONS_THUMBS.start + LOCATION_POINTER_TABLE_HEADER_SIZE
+    )
     locations_palette_table = locations_bitmap_table + 26 * 4
     locations_bitmap_data = locations_palette_table + 26 * 4
     locations_palette_data = locations_bitmap_data + 26 * LOCATION_BITMAP_ENTRY_SIZE
     for period in range(3):
-        write_u32(payload, YugiohROM.ACADEMY_LOCATIONS_THUMBS.start + period * 4, locations_bitmap_table)
-        write_u32(payload, YugiohROM.ACADEMY_LOCATIONS_THUMBS.start + 12 + period * 4, locations_palette_table)
+        write_u32(
+            payload,
+            YugiohROM.ACADEMY_LOCATIONS_THUMBS.start + period * 4,
+            locations_bitmap_table,
+        )
+        write_u32(
+            payload,
+            YugiohROM.ACADEMY_LOCATIONS_THUMBS.start + 12 + period * 4,
+            locations_palette_table,
+        )
     for location in range(26):
         write_u32(
             payload,
             locations_bitmap_table + location * 4,
             locations_bitmap_data + location * LOCATION_BITMAP_ENTRY_SIZE,
         )
-        write_u32(payload, locations_palette_table + location * 4, locations_palette_data + location * 128)
+        write_u32(
+            payload,
+            locations_palette_table + location * 4,
+            locations_palette_data + location * 128,
+        )
 
     return payload
 
@@ -207,7 +231,12 @@ class TestMemoryOperations(unittest.TestCase):
             palette_region = rom.card_artwork_palette(0)
             patched = bytes(bitmap_region.read_bytes(80 * 80))
 
-            expected = split_blocks(pixels, CARD_IMAGE_BLOCKS).flatten().astype(np.uint8).tobytes()
+            expected = (
+                split_blocks(pixels, CARD_IMAGE_BLOCKS)
+                .flatten()
+                .astype(np.uint8)
+                .tobytes()
+            )
             self.assertEqual(patched, expected)
             self.assertNotEqual(bytes(palette_region.read_bytes(128)), b"\x00" * 128)
             artwork_image = next(iter(rom.card_images))
@@ -237,7 +266,12 @@ class TestMemoryOperations(unittest.TestCase):
             rom = YugiohROM(output)
             bitmap_region = rom.duelist_sprite_bitmap(0, 1)
             palette_region = rom.duelist_sprite_palette(0)
-            expected_bitmap = split_blocks(pixels, DUELIST_SPRITE_BLOCKS).flatten().astype(np.uint8).tobytes()
+            expected_bitmap = (
+                split_blocks(pixels, DUELIST_SPRITE_BLOCKS)
+                .flatten()
+                .astype(np.uint8)
+                .tobytes()
+            )
             self.assertEqual(bytes(bitmap_region.read_bytes(4096)), expected_bitmap)
             self.assertNotEqual(bytes(palette_region.read_bytes(128)), b"\x00" * 128)
             sprite_image = next(iter(rom.duelist_sprites()))[1]
@@ -267,7 +301,12 @@ class TestMemoryOperations(unittest.TestCase):
             rom = YugiohROM(output)
             bitmap_region = rom.location_thumb_bitmap(2, 2)
             palette_region = rom.location_thumb_palette(2, 2)
-            expected_bitmap = split_blocks(pixels, LOCATION_THUMB_BLOCKS).flatten().astype(np.uint8).tobytes()
+            expected_bitmap = (
+                split_blocks(pixels, LOCATION_THUMB_BLOCKS)
+                .flatten()
+                .astype(np.uint8)
+                .tobytes()
+            )
             self.assertEqual(bytes(bitmap_region.read_bytes(6144)), expected_bitmap)
             self.assertNotEqual(bytes(palette_region.read_bytes(128)), b"\x00" * 128)
             thumb_image = next(itertools.islice(rom.location_thumbs(), 2, 3))[2]
@@ -286,7 +325,9 @@ class TestMemoryOperations(unittest.TestCase):
     def test_extract_card_artworks_writes_files(self):
         source = self._write_temp_rom()
         with tempfile.TemporaryDirectory() as output_dir:
-            images = iter([Image.new("P", (80, 80), color=3), Image.new("P", (80, 80), color=7)])
+            images = iter(
+                [Image.new("P", (80, 80), color=3), Image.new("P", (80, 80), color=7)]
+            )
             with patch.object(YugiohROM, "_read_card_artworks", return_value=images):
                 extract_card_artworks(source, output_dir)
 
@@ -297,10 +338,15 @@ class TestMemoryOperations(unittest.TestCase):
     def test_extract_duelist_sprites_writes_variation_files(self):
         source = self._write_temp_rom()
         with tempfile.TemporaryDirectory() as output_dir:
-            sprite_sets = iter([
-                [Image.new("P", (64, 64), color=1), Image.new("P", (64, 64), color=2)],
-                [Image.new("P", (64, 64), color=3)],
-            ])
+            sprite_sets = iter(
+                [
+                    [
+                        Image.new("P", (64, 64), color=1),
+                        Image.new("P", (64, 64), color=2),
+                    ],
+                    [Image.new("P", (64, 64), color=3)],
+                ]
+            )
             with (
                 patch.object(YugiohROM, "_read_card_artworks", return_value=iter(())),
                 patch.object(YugiohROM, "duelist_sprites", return_value=sprite_sets),
@@ -321,27 +367,43 @@ class TestMemoryOperations(unittest.TestCase):
     def test_extract_location_thumbs_writes_period_files(self):
         source = self._write_temp_rom()
         with tempfile.TemporaryDirectory() as output_dir:
-            thumbs = iter([
-                [Image.new("P", (96, 64), color=1)],
-                [Image.new("P", (96, 64), color=2)],
-                [Image.new("P", (96, 64), color=3)],
-            ])
+            thumbs = iter(
+                [
+                    [Image.new("P", (96, 64), color=1)],
+                    [Image.new("P", (96, 64), color=2)],
+                    [Image.new("P", (96, 64), color=3)],
+                ]
+            )
             with (
                 patch.object(YugiohROM, "_read_card_artworks", return_value=iter(())),
                 patch.object(YugiohROM, "location_thumbs", return_value=thumbs),
             ):
                 extract_location_thumbs(source, output_dir)
 
-            self.assertTrue(os.path.exists(os.path.join(output_dir, "location-morning-00.png")))
-            self.assertTrue(os.path.exists(os.path.join(output_dir, "location-afternoon-00.png")))
-            self.assertTrue(os.path.exists(os.path.join(output_dir, "location-night-00.png")))
+            self.assertTrue(
+                os.path.exists(os.path.join(output_dir, "location-morning-00.png"))
+            )
+            self.assertTrue(
+                os.path.exists(os.path.join(output_dir, "location-afternoon-00.png"))
+            )
+            self.assertTrue(
+                os.path.exists(os.path.join(output_dir, "location-night-00.png"))
+            )
         os.unlink(source)
 
     def test_cli_build_parser_supports_sprite_commands(self):
         parser = build_parser()
 
         args = parser.parse_args(
-            ["sprites", "extract", "duelist", "--rom", "game.gba", "--output-dir", "out"]
+            [
+                "sprites",
+                "extract",
+                "duelist",
+                "--rom",
+                "game.gba",
+                "--output-dir",
+                "out",
+            ]
         )
 
         self.assertEqual(args.command, "sprites")
@@ -350,7 +412,9 @@ class TestMemoryOperations(unittest.TestCase):
         self.assertEqual(args.rom, "game.gba")
         self.assertEqual(args.output_dir, "out")
         self.assertTrue(callable(args.func))
-        with patch("ygogxda.cli.extract_duelist_sprites") as extract_duelist_sprites_mock:
+        with patch(
+            "ygogxda.cli.extract_duelist_sprites"
+        ) as extract_duelist_sprites_mock:
             result = args.func(args)
 
         extract_duelist_sprites_mock.assert_called_once_with("game.gba", "out")
@@ -388,6 +452,55 @@ class TestMemoryOperations(unittest.TestCase):
         )
         self.assertEqual(result, 0)
 
+    def test_cli_extract_card_pile(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "sprites",
+                "extract",
+                "card-pile",
+                "--rom",
+                "game.gba",
+                "--index",
+                "3",
+                "--output-dir",
+                "out",
+            ]
+        )
+        self.assertEqual(args.sprites_resource, "card-pile")
+        self.assertEqual(args.index, 3)
+        with patch("ygogxda.cli.extract_card_pile_layers") as mock:
+            result = args.func(args)
+        mock.assert_called_once_with("game.gba", index=3, output_dir="out")
+        self.assertEqual(result, 0)
+
+    def test_cli_patch_card_pile(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "sprites",
+                "patch",
+                "card-pile",
+                "--rom",
+                "game.gba",
+                "--index",
+                "1",
+                "--layers-dir",
+                "layers",
+                "--output",
+                "patched.gba",
+            ]
+        )
+        self.assertEqual(args.sprites_resource, "card-pile")
+        self.assertEqual(args.index, 1)
+        self.assertEqual(args.layers_dir, "layers")
+        with patch("ygogxda.cli.patch_card_pile_background_from_files") as mock:
+            result = args.func(args)
+        mock.assert_called_once_with(
+            "game.gba", index=1, layers_dir="layers", output_rom="patched.gba"
+        )
+        self.assertEqual(result, 0)
+
     def test_cli_build_parser_supports_card_patch_commands(self):
         parser = build_parser()
 
@@ -413,7 +526,9 @@ class TestMemoryOperations(unittest.TestCase):
         with patch("ygogxda.cli.patch_card_image") as patch_card_image_mock:
             result = args.func(args)
 
-        patch_card_image_mock.assert_called_once_with("game.gba", 2, "card.png", "patched.gba")
+        patch_card_image_mock.assert_called_once_with(
+            "game.gba", 2, "card.png", "patched.gba"
+        )
         self.assertEqual(result, 0)
 
     def test_extract_string_table_writes_csv(self):
@@ -561,7 +676,16 @@ class TestMemoryOperations(unittest.TestCase):
         parser = build_parser()
 
         args = parser.parse_args(
-            ["strings", "extract", "--rom", "game.gba", "--table", "card_names_en", "--output", "names.csv"]
+            [
+                "strings",
+                "extract",
+                "--rom",
+                "game.gba",
+                "--table",
+                "card_names_en",
+                "--output",
+                "names.csv",
+            ]
         )
 
         self.assertEqual(args.command, "strings")
@@ -583,12 +707,18 @@ class TestMemoryOperations(unittest.TestCase):
 
         args = parser.parse_args(
             [
-                "strings", "patch",
-                "--rom", "game.gba",
-                "--table", "card_names_en",
-                "--index", "5",
-                "--text", "NewName",
-                "--output", "patched.gba",
+                "strings",
+                "patch",
+                "--rom",
+                "game.gba",
+                "--table",
+                "card_names_en",
+                "--index",
+                "5",
+                "--text",
+                "NewName",
+                "--output",
+                "patched.gba",
             ]
         )
 
@@ -601,7 +731,9 @@ class TestMemoryOperations(unittest.TestCase):
         with patch("ygogxda.cli.patch_string_entry") as mock_patch:
             result = args.func(args)
 
-        mock_patch.assert_called_once_with("game.gba", "card_names_en", 5, "NewName", "patched.gba")
+        mock_patch.assert_called_once_with(
+            "game.gba", "card_names_en", 5, "NewName", "patched.gba"
+        )
         self.assertEqual(result, 0)
 
     def test_cli_strings_patch_csv(self):
@@ -609,11 +741,16 @@ class TestMemoryOperations(unittest.TestCase):
 
         args = parser.parse_args(
             [
-                "strings", "patch",
-                "--rom", "game.gba",
-                "--table", "card_names_en",
-                "--csv", "names.csv",
-                "--output", "patched.gba",
+                "strings",
+                "patch",
+                "--rom",
+                "game.gba",
+                "--table",
+                "card_names_en",
+                "--csv",
+                "names.csv",
+                "--output",
+                "patched.gba",
             ]
         )
 
@@ -624,7 +761,9 @@ class TestMemoryOperations(unittest.TestCase):
         with patch("ygogxda.cli.patch_string_table_bulk") as mock_bulk:
             result = args.func(args)
 
-        mock_bulk.assert_called_once_with("game.gba", "card_names_en", "names.csv", "patched.gba")
+        mock_bulk.assert_called_once_with(
+            "game.gba", "card_names_en", "names.csv", "patched.gba"
+        )
         self.assertEqual(result, 0)
 
 
@@ -659,45 +798,70 @@ class TestExtractUsesCanonicalPath(unittest.TestCase):
     def test_extract_card_artworks_uses_canonical_path_when_no_output_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             rom_path = self._write_temp_rom(tmpdir)
-            images = iter([Image.new("P", (80, 80), color=3), Image.new("P", (80, 80), color=7)])
+            images = iter(
+                [Image.new("P", (80, 80), color=3), Image.new("P", (80, 80), color=7)]
+            )
             with patch.object(YugiohROM, "_read_card_artworks", return_value=images):
                 extract_card_artworks(rom_path)
-            expected_dir = os.path.join(tmpdir, "game.gba.extracted", "sprites", "cards")
+            expected_dir = os.path.join(
+                tmpdir, "game.gba.extracted", "sprites", "cards"
+            )
             self.assertTrue(os.path.exists(os.path.join(expected_dir, "card-0000.png")))
             self.assertTrue(os.path.exists(os.path.join(expected_dir, "card-0001.png")))
 
     def test_extract_duelist_sprites_uses_canonical_path_when_no_output_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             rom_path = self._write_temp_rom(tmpdir)
-            sprite_sets = iter([
-                [Image.new("P", (64, 64), color=1), Image.new("P", (64, 64), color=2)],
-            ])
+            sprite_sets = iter(
+                [
+                    [
+                        Image.new("P", (64, 64), color=1),
+                        Image.new("P", (64, 64), color=2),
+                    ],
+                ]
+            )
             with (
                 patch.object(YugiohROM, "_read_card_artworks", return_value=iter(())),
                 patch.object(YugiohROM, "duelist_sprites", return_value=sprite_sets),
             ):
                 extract_duelist_sprites(rom_path)
-            expected_dir = os.path.join(tmpdir, "game.gba.extracted", "sprites", "duelists")
-            self.assertTrue(os.path.exists(os.path.join(expected_dir, "duelist-00-variation-0.png")))
-            self.assertTrue(os.path.exists(os.path.join(expected_dir, "duelist-00-variation-1.png")))
+            expected_dir = os.path.join(
+                tmpdir, "game.gba.extracted", "sprites", "duelists"
+            )
+            self.assertTrue(
+                os.path.exists(os.path.join(expected_dir, "duelist-00-variation-0.png"))
+            )
+            self.assertTrue(
+                os.path.exists(os.path.join(expected_dir, "duelist-00-variation-1.png"))
+            )
 
     def test_extract_location_thumbs_uses_canonical_path_when_no_output_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             rom_path = self._write_temp_rom(tmpdir)
-            thumbs = iter([
-                [Image.new("P", (96, 64), color=1)],
-                [Image.new("P", (96, 64), color=2)],
-                [Image.new("P", (96, 64), color=3)],
-            ])
+            thumbs = iter(
+                [
+                    [Image.new("P", (96, 64), color=1)],
+                    [Image.new("P", (96, 64), color=2)],
+                    [Image.new("P", (96, 64), color=3)],
+                ]
+            )
             with (
                 patch.object(YugiohROM, "_read_card_artworks", return_value=iter(())),
                 patch.object(YugiohROM, "location_thumbs", return_value=thumbs),
             ):
                 extract_location_thumbs(rom_path)
-            expected_dir = os.path.join(tmpdir, "game.gba.extracted", "sprites", "locations")
-            self.assertTrue(os.path.exists(os.path.join(expected_dir, "location-morning-00.png")))
-            self.assertTrue(os.path.exists(os.path.join(expected_dir, "location-afternoon-00.png")))
-            self.assertTrue(os.path.exists(os.path.join(expected_dir, "location-night-00.png")))
+            expected_dir = os.path.join(
+                tmpdir, "game.gba.extracted", "sprites", "locations"
+            )
+            self.assertTrue(
+                os.path.exists(os.path.join(expected_dir, "location-morning-00.png"))
+            )
+            self.assertTrue(
+                os.path.exists(os.path.join(expected_dir, "location-afternoon-00.png"))
+            )
+            self.assertTrue(
+                os.path.exists(os.path.join(expected_dir, "location-night-00.png"))
+            )
 
 
 class TestCLIExtractCanonicalPath(unittest.TestCase):
@@ -721,7 +885,9 @@ class TestCLIExtractCanonicalPath(unittest.TestCase):
 
     def test_cli_sprites_extract_location_without_output_dir(self):
         parser = build_parser()
-        args = parser.parse_args(["sprites", "extract", "location-thumb", "--rom", "game.gba"])
+        args = parser.parse_args(
+            ["sprites", "extract", "location-thumb", "--rom", "game.gba"]
+        )
         self.assertIsNone(args.output_dir)
         with patch("ygogxda.cli.extract_location_thumbs") as mock:
             result = args.func(args)
@@ -752,7 +918,9 @@ class TestExtractStringTableCanonicalPath(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             rom_path = self._write_temp_rom(tmpdir)
             extract_string_table(rom_path, "card_names_en")
-            expected = os.path.join(tmpdir, "game.gba.extracted", "strings", "card_names_en.csv")
+            expected = os.path.join(
+                tmpdir, "game.gba.extracted", "strings", "card_names_en.csv"
+            )
             self.assertTrue(os.path.exists(expected))
             with open(expected, newline="", encoding="utf-8") as f:
                 rows = list(csv.DictReader(f))
@@ -767,6 +935,7 @@ class TestExtractStringTableCanonicalPath(unittest.TestCase):
 
     def test_extract_string_table_with_index_writes_to_stdout(self):
         import io
+
         with tempfile.TemporaryDirectory() as tmpdir:
             rom_path = self._write_temp_rom(tmpdir)
             captured = io.StringIO()
@@ -819,7 +988,16 @@ class TestCLICanonicalPathStringsAndMemory(unittest.TestCase):
     def test_cli_memory_dump_with_explicit_output(self):
         parser = build_parser()
         args = parser.parse_args(
-            ["memory", "dump", "--rom", "game.gba", "--path", "strings.cards.names.en", "--output", "out.bin"]
+            [
+                "memory",
+                "dump",
+                "--rom",
+                "game.gba",
+                "--path",
+                "strings.cards.names.en",
+                "--output",
+                "out.bin",
+            ]
         )
         self.assertEqual(args.output, "out.bin")
         with patch("ygogxda.cli.dump_region") as mock:
@@ -837,6 +1015,7 @@ class TestCLICanonicalPathStringsAndMemory(unittest.TestCase):
         self.assertEqual(result, 0)
         # Called once per canonical table, with no output_file (canonical default)
         from ygogxda.memory_map import CANONICAL_STRING_TABLES
+
         self.assertEqual(mock.call_count, len(CANONICAL_STRING_TABLES))
         for call in mock.call_args_list:
             self.assertEqual(call.args[0], "game.gba")

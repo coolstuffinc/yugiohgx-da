@@ -6,7 +6,12 @@ import numpy as np
 from PIL import Image
 
 from .memory import MemoryEmulator, mem_region
-from .memory_map import CANONICAL_STRING_TABLES, list_memory_paths, resolve_memory_path, resolve_string_table
+from .memory_map import (
+    CANONICAL_STRING_TABLES,
+    list_memory_paths,
+    resolve_memory_path,
+    resolve_string_table,
+)
 from .japanese_encoding import decode as japanese_decode, encode as japanese_encode
 from .rom import YugiohROM
 from .utils import charset_decode, rgb2gba, split_blocks
@@ -132,7 +137,9 @@ def patch_card_image(rom_file, card_id, image_file, output_rom):
     )
     bitmap_region = rom.card_artwork_bitmap(card_id)
     palette_region = rom.card_artwork_palette(card_id)
-    _patch_indexed_image(bitmap_region, palette_region, pixels, palette, CARD_IMAGE_BLOCKS)
+    _patch_indexed_image(
+        bitmap_region, palette_region, pixels, palette, CARD_IMAGE_BLOCKS
+    )
     rom.patch(bitmap_region)
     rom.patch(palette_region)
     rom.save(output_rom)
@@ -154,7 +161,10 @@ def extract_duelist_sprites(rom_file, output_dir=None):
     output_path = _ensure_output_dir(output_dir)
     for duelist_index, variations in enumerate(rom.duelist_sprites()):
         for variation_index, image in enumerate(variations):
-            image.save(output_path / f"duelist-{duelist_index:02d}-variation-{variation_index}.png")
+            image.save(
+                output_path
+                / f"duelist-{duelist_index:02d}-variation-{variation_index}.png"
+            )
 
 
 def extract_location_thumbs(rom_file, output_dir=None):
@@ -167,14 +177,18 @@ def extract_location_thumbs(rom_file, output_dir=None):
             image.save(output_path / f"location-{period}-{location_index:02d}.png")
 
 
-def patch_duelist_sprite(rom_file, duelist_index, variation_index, image_file, output_rom):
+def patch_duelist_sprite(
+    rom_file, duelist_index, variation_index, image_file, output_rom
+):
     rom = YugiohROM(rom_file)
     pixels, palette = _load_indexed_image(
         image_file, DUELIST_SPRITE_SIZE, DUELIST_SPRITE_PALETTE_COLORS
     )
     bitmap_region = rom.duelist_sprite_bitmap(duelist_index, variation_index)
     palette_region = rom.duelist_sprite_palette(duelist_index)
-    _patch_indexed_image(bitmap_region, palette_region, pixels, palette, DUELIST_SPRITE_BLOCKS)
+    _patch_indexed_image(
+        bitmap_region, palette_region, pixels, palette, DUELIST_SPRITE_BLOCKS
+    )
     rom.patch(bitmap_region)
     rom.patch(palette_region)
     rom.save(output_rom)
@@ -185,14 +199,18 @@ def patch_location_thumb(rom_file, period, location_index, image_file, output_ro
     try:
         period_index = LOCATION_PERIODS.index(period)
     except ValueError as exc:
-        raise ValueError(f"period must be one of: {', '.join(LOCATION_PERIODS)}") from exc
+        raise ValueError(
+            f"period must be one of: {', '.join(LOCATION_PERIODS)}"
+        ) from exc
 
     pixels, palette = _load_indexed_image(
         image_file, LOCATION_THUMB_SIZE, LOCATION_THUMB_PALETTE_COLORS
     )
     bitmap_region = rom.location_thumb_bitmap(period_index, location_index)
     palette_region = rom.location_thumb_palette(period_index, location_index)
-    _patch_indexed_image(bitmap_region, palette_region, pixels, palette, LOCATION_THUMB_BLOCKS)
+    _patch_indexed_image(
+        bitmap_region, palette_region, pixels, palette, LOCATION_THUMB_BLOCKS
+    )
     rom.patch(bitmap_region)
     rom.patch(palette_region)
     rom.save(output_rom)
@@ -255,7 +273,9 @@ def extract_string_table(rom_file, table_name, output_file=None, index=None):
     ``None`` but *index* is given, writes to stdout.
     """
     if output_file is None and index is None:
-        output_file = canonical_output_path(rom_file) / SUBDIR_STRINGS / f"{table_name}.csv"
+        output_file = (
+            canonical_output_path(rom_file) / SUBDIR_STRINGS / f"{table_name}.csv"
+        )
         _ensure_output_dir(output_file.parent)
     memory = MemoryEmulator(rom_file)
     table = resolve_string_table(table_name)
@@ -289,6 +309,68 @@ def extract_string_table(rom_file, table_name, output_file=None, index=None):
             writer = csv.writer(f)
             writer.writerow(["index", "text"])
             writer.writerows(rows)
+
+
+CARD_PILE_CANONICAL_SUBDIR = Path("sprites") / "card_piles"
+
+
+def extract_card_pile_layers(rom_file, index=None, output_dir=None):
+    rom = YugiohROM(rom_file)
+    if output_dir is None:
+        output_dir = canonical_output_path(rom_file) / CARD_PILE_CANONICAL_SUBDIR
+    output_path = _ensure_output_dir(output_dir)
+
+    indices = range(8) if index is None else [index]
+    for idx in indices:
+        composite = rom.card_pile_background(idx)
+        composite.save(output_path / f"card_pile_{idx}_composite.png")
+
+        layers, pal_n, pal_payload = rom.card_pile_background_layers(idx)
+        for bank, arr in layers.items():
+            pal = bytearray()
+            for j in range(16):
+                bank_idx = bank * 16 + j
+                if bank_idx < pal_n:
+                    v = pal_payload[bank_idx * 2] | (pal_payload[bank_idx * 2 + 1] << 8)
+                else:
+                    v = 0x7C1F
+                pal.extend([v & 0xFF, (v >> 8) & 0xFF])
+            img = Image.fromarray(arr)
+            img.putpalette(pal, rawmode="RGB;15")
+            img.save(output_path / f"card_pile_{idx}_bank{bank}.png")
+
+    return output_path
+
+
+def patch_card_pile_background_from_files(
+    rom_file, index=None, layers_dir=None, output_rom=None
+):
+    if layers_dir is None:
+        layers_dir = canonical_output_path(rom_file) / CARD_PILE_CANONICAL_SUBDIR
+    layers_path = Path(layers_dir)
+    rom = YugiohROM(rom_file)
+
+    indices = range(8) if index is None else [index]
+    for idx in indices:
+        _, pal_n, pal_payload = rom.card_pile_background_layers(idx)
+        layers = {}
+        for bank in sorted({0, 1, 2}):
+            png = layers_path / f"card_pile_{idx}_bank{bank}.png"
+            if png.is_file():
+                img = Image.open(png)
+                arr = np.asarray(img, dtype=np.uint8)
+                if arr.shape != (160, 240):
+                    arr = np.asarray(
+                        img.resize((240, 160), Image.Resampling.NEAREST), dtype=np.uint8
+                    )
+                layers[bank] = arr
+        if not layers:
+            raise FileNotFoundError(
+                f"No layer PNGs found for card_pile_{idx} in {layers_dir}"
+            )
+        rom.patch_card_pile_background(idx, layers)
+
+    rom.save(output_rom)
 
 
 def patch_string_table_bulk(rom_file, table_name, csv_file, output_rom):

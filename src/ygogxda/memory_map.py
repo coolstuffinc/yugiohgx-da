@@ -49,6 +49,11 @@ CANONICAL_MEMORY_PATHS = {
         YugiohROM.ACADEMY_LOCATIONS_THUMBS,
         "Academy location thumbnail pointer tables",
     ),
+    "sprites.card_piles": MemoryPath(
+        "sprites.card_piles",
+        YugiohROM.DUEL_FIELD_BG,
+        "Card pile background BIG_3 entries (8)",
+    ),
     "strings.cards.names.en": MemoryPath(
         "strings.cards.names.en",
         YugiohROM.CARD_NAMES_EN,

@@ -6,9 +6,11 @@ from .memory_ops import (
     dump_region,
     extract_card_artworks,
     extract_duelist_sprites,
+    extract_card_pile_layers,
     extract_location_thumbs,
     extract_string_table,
     patch_card_image,
+    patch_card_pile_background_from_files,
     patch_duelist_sprite,
     patch_location_thumb,
     patch_string_entry,
@@ -44,7 +46,9 @@ def _cmd_strings_extract(args):
         for name in sorted(CANONICAL_STRING_TABLES.keys()):
             extract_string_table(args.rom, name)
     else:
-        extract_string_table(args.rom, args.table, output_file=args.output, index=args.index)
+        extract_string_table(
+            args.rom, args.table, output_file=args.output, index=args.index
+        )
     return 0
 
 
@@ -80,12 +84,28 @@ def _cmd_sprites_patch_card(args):
 
 
 def _cmd_sprites_patch_duelist(args):
-    patch_duelist_sprite(args.rom, args.duelist_index, args.variation_index, args.image, args.output)
+    patch_duelist_sprite(
+        args.rom, args.duelist_index, args.variation_index, args.image, args.output
+    )
     return 0
 
 
 def _cmd_sprites_patch_location(args):
-    patch_location_thumb(args.rom, args.period, args.location_index, args.image, args.output)
+    patch_location_thumb(
+        args.rom, args.period, args.location_index, args.image, args.output
+    )
+    return 0
+
+
+def _cmd_sprites_extract_card_pile(args):
+    extract_card_pile_layers(args.rom, index=args.index, output_dir=args.output_dir)
+    return 0
+
+
+def _cmd_sprites_patch_card_pile(args):
+    patch_card_pile_background_from_files(
+        args.rom, index=args.index, layers_dir=args.layers_dir, output_rom=args.output
+    )
     return 0
 
 
@@ -97,10 +117,14 @@ def build_parser():
     memory_parser = subparsers.add_parser("memory", help="Memory mapping utilities")
     memory_subparsers = memory_parser.add_subparsers(dest="memory_command")
 
-    paths_parser = memory_subparsers.add_parser("paths", help="List canonical memory paths")
+    paths_parser = memory_subparsers.add_parser(
+        "paths", help="List canonical memory paths"
+    )
     paths_parser.set_defaults(func=_cmd_memory_paths)
 
-    dump_parser = memory_subparsers.add_parser("dump", help="Dump bytes from a canonical memory path")
+    dump_parser = memory_subparsers.add_parser(
+        "dump", help="Dump bytes from a canonical memory path"
+    )
     dump_parser.add_argument("--rom", required=True, help="Input ROM file")
     dump_parser.add_argument("--path", required=True, help="Canonical memory path")
     dump_parser.add_argument(
@@ -111,7 +135,9 @@ def build_parser():
     dump_parser.set_defaults(func=_cmd_memory_dump)
 
     # ── strings ───────────────────────────────────────────────────────────────
-    strings_parser = subparsers.add_parser("strings", help="String table extraction and patching")
+    strings_parser = subparsers.add_parser(
+        "strings", help="String table extraction and patching"
+    )
     strings_subparsers = strings_parser.add_subparsers(dest="strings_action")
 
     strings_extract_parser = strings_subparsers.add_parser(
@@ -143,7 +169,9 @@ def build_parser():
         help="String table to patch",
     )
     strings_patch_parser.add_argument("--output", required=True, help="Output ROM file")
-    strings_patch_mode = strings_patch_parser.add_mutually_exclusive_group(required=True)
+    strings_patch_mode = strings_patch_parser.add_mutually_exclusive_group(
+        required=True
+    )
     strings_patch_mode.add_argument(
         "--csv", dest="csv_file", metavar="FILE", help="Bulk patch from CSV file"
     )
@@ -156,17 +184,25 @@ def build_parser():
     strings_patch_parser.set_defaults(func=_cmd_strings_patch)
 
     # ── sprites ───────────────────────────────────────────────────────────────
-    sprites_parser = subparsers.add_parser("sprites", help="Sprite extraction and patching")
+    sprites_parser = subparsers.add_parser(
+        "sprites", help="Sprite extraction and patching"
+    )
     sprites_action_subparsers = sprites_parser.add_subparsers(dest="sprites_action")
 
     # sprites extract
-    sprites_extract_parser = sprites_action_subparsers.add_parser("extract", help="Extract sprites")
-    sprites_extract_subparsers = sprites_extract_parser.add_subparsers(dest="sprites_resource")
+    sprites_extract_parser = sprites_action_subparsers.add_parser(
+        "extract", help="Extract sprites"
+    )
+    sprites_extract_subparsers = sprites_extract_parser.add_subparsers(
+        dest="sprites_resource"
+    )
 
     sprites_extract_card_parser = sprites_extract_subparsers.add_parser(
         "card", help="Extract all high-resolution card artworks"
     )
-    sprites_extract_card_parser.add_argument("--rom", required=True, help="Input ROM file")
+    sprites_extract_card_parser.add_argument(
+        "--rom", required=True, help="Input ROM file"
+    )
     sprites_extract_card_parser.add_argument(
         "--output-dir",
         default=None,
@@ -177,7 +213,9 @@ def build_parser():
     sprites_extract_duelist_parser = sprites_extract_subparsers.add_parser(
         "duelist", help="Extract all duelist sprite variations"
     )
-    sprites_extract_duelist_parser.add_argument("--rom", required=True, help="Input ROM file")
+    sprites_extract_duelist_parser.add_argument(
+        "--rom", required=True, help="Input ROM file"
+    )
     sprites_extract_duelist_parser.add_argument(
         "--output-dir",
         default=None,
@@ -188,7 +226,9 @@ def build_parser():
     sprites_extract_location_parser = sprites_extract_subparsers.add_parser(
         "location-thumb", help="Extract academy location thumbnails"
     )
-    sprites_extract_location_parser.add_argument("--rom", required=True, help="Input ROM file")
+    sprites_extract_location_parser.add_argument(
+        "--rom", required=True, help="Input ROM file"
+    )
     sprites_extract_location_parser.add_argument(
         "--output-dir",
         default=None,
@@ -196,46 +236,112 @@ def build_parser():
     )
     sprites_extract_location_parser.set_defaults(func=_cmd_sprites_extract_locations)
 
+    sprites_extract_card_pile_parser = sprites_extract_subparsers.add_parser(
+        "card-pile", help="Extract card pile background layers"
+    )
+    sprites_extract_card_pile_parser.add_argument(
+        "--rom", required=True, help="Input ROM file"
+    )
+    sprites_extract_card_pile_parser.add_argument(
+        "--index",
+        type=int,
+        default=None,
+        help="Card pile background index (0-7, default: all)",
+    )
+    sprites_extract_card_pile_parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Directory for extracted images (default: <rom>.extracted/sprites/card_piles/)",
+    )
+    sprites_extract_card_pile_parser.set_defaults(func=_cmd_sprites_extract_card_pile)
+
     # sprites patch
-    sprites_patch_parser = sprites_action_subparsers.add_parser("patch", help="Patch sprites")
-    sprites_patch_subparsers = sprites_patch_parser.add_subparsers(dest="sprites_resource")
+    sprites_patch_parser = sprites_action_subparsers.add_parser(
+        "patch", help="Patch sprites"
+    )
+    sprites_patch_subparsers = sprites_patch_parser.add_subparsers(
+        dest="sprites_resource"
+    )
 
     sprites_patch_card_parser = sprites_patch_subparsers.add_parser(
         "card", help="Patch one high-resolution card artwork from an input image"
     )
-    sprites_patch_card_parser.add_argument("--rom", required=True, help="Input ROM file")
-    sprites_patch_card_parser.add_argument("--card-id", type=int, required=True, help="Card ID to patch")
-    sprites_patch_card_parser.add_argument("--image", required=True, help="Input image file")
-    sprites_patch_card_parser.add_argument("--output", required=True, help="Output ROM file")
+    sprites_patch_card_parser.add_argument(
+        "--rom", required=True, help="Input ROM file"
+    )
+    sprites_patch_card_parser.add_argument(
+        "--card-id", type=int, required=True, help="Card ID to patch"
+    )
+    sprites_patch_card_parser.add_argument(
+        "--image", required=True, help="Input image file"
+    )
+    sprites_patch_card_parser.add_argument(
+        "--output", required=True, help="Output ROM file"
+    )
     sprites_patch_card_parser.set_defaults(func=_cmd_sprites_patch_card)
 
     sprites_patch_duelist_parser = sprites_patch_subparsers.add_parser(
         "duelist", help="Patch one duelist sprite variation from an input image"
     )
-    sprites_patch_duelist_parser.add_argument("--rom", required=True, help="Input ROM file")
+    sprites_patch_duelist_parser.add_argument(
+        "--rom", required=True, help="Input ROM file"
+    )
     sprites_patch_duelist_parser.add_argument(
         "--duelist-index", required=True, type=int, help="Duelist sprite set index"
     )
     sprites_patch_duelist_parser.add_argument(
         "--variation-index", required=True, type=int, help="Sprite variation index"
     )
-    sprites_patch_duelist_parser.add_argument("--image", required=True, help="Input image file")
-    sprites_patch_duelist_parser.add_argument("--output", required=True, help="Output ROM file")
+    sprites_patch_duelist_parser.add_argument(
+        "--image", required=True, help="Input image file"
+    )
+    sprites_patch_duelist_parser.add_argument(
+        "--output", required=True, help="Output ROM file"
+    )
     sprites_patch_duelist_parser.set_defaults(func=_cmd_sprites_patch_duelist)
 
     sprites_patch_location_parser = sprites_patch_subparsers.add_parser(
-        "location-thumb", help="Patch one academy location thumbnail from an input image"
+        "location-thumb",
+        help="Patch one academy location thumbnail from an input image",
     )
-    sprites_patch_location_parser.add_argument("--rom", required=True, help="Input ROM file")
+    sprites_patch_location_parser.add_argument(
+        "--rom", required=True, help="Input ROM file"
+    )
     sprites_patch_location_parser.add_argument(
         "--period", required=True, choices=LOCATION_PERIODS, help="Time of day variant"
     )
     sprites_patch_location_parser.add_argument(
         "--location-index", required=True, type=int, help="Academy location index"
     )
-    sprites_patch_location_parser.add_argument("--image", required=True, help="Input image file")
-    sprites_patch_location_parser.add_argument("--output", required=True, help="Output ROM file")
+    sprites_patch_location_parser.add_argument(
+        "--image", required=True, help="Input image file"
+    )
+    sprites_patch_location_parser.add_argument(
+        "--output", required=True, help="Output ROM file"
+    )
     sprites_patch_location_parser.set_defaults(func=_cmd_sprites_patch_location)
+
+    sprites_patch_card_pile_parser = sprites_patch_subparsers.add_parser(
+        "card-pile", help="Patch card pile background layers from directory"
+    )
+    sprites_patch_card_pile_parser.add_argument(
+        "--rom", required=True, help="Input ROM file"
+    )
+    sprites_patch_card_pile_parser.add_argument(
+        "--index",
+        type=int,
+        default=None,
+        help="Card pile background index (0-7, default: all)",
+    )
+    sprites_patch_card_pile_parser.add_argument(
+        "--layers-dir",
+        default=None,
+        help="Directory containing layer PNGs (default: <rom>.extracted/sprites/card_piles/)",
+    )
+    sprites_patch_card_pile_parser.add_argument(
+        "--output", required=True, help="Output ROM file"
+    )
+    sprites_patch_card_pile_parser.set_defaults(func=_cmd_sprites_patch_card_pile)
 
     return parser
 
