@@ -36,9 +36,9 @@ GBA ROM is mapped at base address **0x08000000**. `MemoryEmulator` works with bo
 
 All `YugiohROM` region constants (e.g. `CARD_HIGH_RES_BITMAPS = slice(0x087CFACC, ...)`) use **real** addresses. The constructor reads from a `MemoryEmulator` that handles translation.
 
-## BIG_3 Layer API
+## BIG_3 Layer API (card pile backgrounds)
 
-`YugiohROM` has these duel field background methods:
+`YugiohROM` has these card pile background methods:
 
 | Method | Returns | Description |
 |---|---|---|
@@ -64,7 +64,7 @@ The encode uses flip-aware global tile dedup (checks all 4 orientations: origina
 - Data stored as `[tile_row][tile_col][px_row][px_col]` — reshape with `(tiles_high, tiles_wide, 8, 8)`, then `join_blocks((tiles_high, tiles_wide))` from `utils.py`
 - Palette: 128 bytes = 64 × 16-bit little-endian GBA colors. Bit 15 is ignored by hardware. Use `image.putpalette(palette, rawmode="RGB;15")` for correct decoding.
 
-**4bpp tiled format** (duel field backgrounds — BIG_3):
+**4bpp tiled format** (card pile backgrounds — BIG_3):
 - Each tile is 32 bytes in standard GBA row-major nibble-packed format: 8 rows × 4 bytes per row. Each byte = 2 pixels (upper nibble = even/left column, lower nibble = odd/right column).
 - Background data structure (reverse-engineered from `FUN_080ad2b4`):
   1. `u16[0]` = palette color count (`pal_n`); `u16[1..3]` = same value (redundant)
@@ -75,6 +75,40 @@ The encode uses flip-aware global tile dedup (checks all 4 orientations: origina
 - Screen entries retain their original palette bank values (bits 12-15: 0, 1, or 2). The decoder must use per-entry bank selection: pixel value `n` in a tile at bank `b` maps to file color `b*16 + n`. Build a full 256-color palette from the file (pad unused entries with `0x7C1F`/magenta) and offset each tile's pixel values by `bank * 16` on the canvas.
 - The underlying file palette has ~43 colors spanning 3 banks. Bank separators at indices 0, 16, 32 each start with `0x7C1F`.
 - Rendered result: 240×160 pixels (30×20 tiles in a 32-wide map). Rely on `rom.card_pile_backgrounds()` or `rom.card_pile_background(index)` rather than manual decoding.
+
+### Reverse-engineering notes (BIG_3 / FUN_080ad2b4)
+
+The game function `FUN_080ad2b4` loads card pile backgrounds. Key observations:
+
+**Palette layout (entry 0 example, 43 colors):**
+| File index | GBA bank | Usage | Key colors |
+|---|---|---|---|
+| 0-15 | Bank 1 (PAL+32) | Card art background layer | Dark browns, blue-grays |
+| 16-31 | Bank 2 (PAL+64) | Duel field/terrain layer | Warmer browns, tans, white |
+| 32-42 | Bank 3 (PAL+96) | UI overlay frame | Grays, white |
+
+Each bank starts with `0x7C1F` (magenta/transparent). Colors at indices 0-2 are identical across banks 1 and 2; indices 3-15 differ.
+
+**How `FUN_080ad2b4` works:**
+1. Reads `pal_n` from header, copies `pal_n` colors from the entry's palette data into GBA palette RAM at `PALETTE + param_4 * 32` (so file[0] lands at PALETTE[param_4*16], etc.)
+2. Parses tile data and screen entry pairs
+3. For each screen entry, sets bits 12-15 (palette bank) to `param_4` — this overrides whatever bank was originally in the file data
+4. Writes tiles to VRAM charbase block(s)
+
+However, the original screen entries in the ROM file have their own palette bank values (0, 1, 2). The game's override to `param_4` is a runtime thing — for decoding/editing, we use the original file-level bank values.
+
+**Two render passes:** `render_duel_field_background` calls `FUN_080ad2b4` twice:
+1. First: `param_4=1`, main entry data pointer (palette goes to GBA bank 1)
+2. Second (conditional): `param_4=5`, different data pointer `puVar3` (unknown — possibly a shared/common overlay)
+
+**Entry 7 anomaly:** Contains a standard sub-background (same format as entries 0-6) followed by ~1.6MB of extra data. Format of remaining data unknown — may be a pool of shared tiles or other resources.
+
+**Tile dedup in original data:** The original 600 tile positions (30×20 visible area) reference only ~408 unique tiles. Many tiles are shared via H-flip/V-flip (bits 10-11 in dst). The encoder recreates this with flip-aware dedup.
+
+**Common pitfalls:**
+- Bitplane-interleaved 4bpp (used by some GBA tools) produces magenta "splattered" output (~31% pixel value 0). Always use row-major nibble-packed.
+- Tile flip bits (H/V) are pre-applied when decoding to layer images. The encoder re-detects flips during dedup.
+- Palette bank 0 in screen entries accesses GBA palette bank 0 (PAL+0..31), which may contain data loaded by a prior operation (e.g., main background). Not all 3 banks are purely from the BIG_3 entry.
 
 **Sprite dimensions:**
 | Resource | Size | Tiles | Palette colors |
