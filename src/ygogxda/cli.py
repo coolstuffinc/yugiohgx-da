@@ -18,6 +18,7 @@ from .memory_ops import (
     extract_card_pile_layers,
     extract_location_thumbs,
     extract_string_table,
+    lookup_card,
     patch_card_image,
     patch_card_pile_background_from_files,
     patch_duelist_sprite,
@@ -138,6 +139,23 @@ def _cmd_sprites_patch_card_pile(args):
     patch_card_pile_background_from_files(
         args.rom, index=args.index, layers_dir=args.layers_dir, output_rom=args.output
     )
+    return 0
+
+
+def _cmd_card_lookup(args):
+    result = lookup_card(
+        rom_file=args.rom,
+        ordinal=args.ordinal,
+        card_id=args.card_id,
+        password=args.password,
+        show_text=args.text,
+    )
+    print(f"ordinal:  {result['ordinal']}")
+    print(f"card_id:  {result['card_id']}")
+    print(f"name:     {result['name']}")
+    print(f"password: {result['password']}")
+    if result["text"] is not None:
+        print(f"text:     {result['text']}")
     return 0
 
 
@@ -369,6 +387,26 @@ def build_parser():
         "--output", required=True, help="Output ROM file"
     )
     sprites_patch_card_pile_parser.set_defaults(func=_cmd_sprites_patch_card_pile)
+
+    # ── card ──────────────────────────────────────────────────────────────────
+    card_parser = subparsers.add_parser("card", help="Card identifier lookup")
+    card_subparsers = card_parser.add_subparsers(
+        dest="card_command", parser_class=_HelpOnErrorParser
+    )
+
+    card_lookup_parser = card_subparsers.add_parser(
+        "lookup", help="Look up card by ordinal, card_id, or password"
+    )
+    card_lookup_parser.add_argument("--rom", required=True, help="Input ROM file")
+    card_lookup_parser.add_argument(
+        "--ordinal", type=int, help="Card ordinal index (0..1200)"
+    )
+    card_lookup_parser.add_argument("--card-id", type=int, help="Internal card ID")
+    card_lookup_parser.add_argument("--password", help="8-digit password string")
+    card_lookup_parser.add_argument(
+        "--text", action="store_true", help="Show card effect text"
+    )
+    card_lookup_parser.set_defaults(func=_cmd_card_lookup)
 
     return parser
 

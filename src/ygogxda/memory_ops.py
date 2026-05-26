@@ -373,6 +373,43 @@ def patch_card_pile_background_from_files(
     rom.save(output_rom)
 
 
+def lookup_card(rom_file, ordinal=None, card_id=None, password=None, show_text=False):
+    rom = YugiohROM(rom_file)
+    LUT = rom.rom[YugiohROM.CARD_NUMBER_TO_ID].read_array(1201, dtype="H")
+
+    if password is not None:
+        ordinal = rom.passwords.enter(password)
+        if ordinal == 0:
+            raise ValueError(f"Invalid password: {password}")
+
+    if ordinal is not None:
+        if ordinal < 0 or ordinal >= 1201:
+            raise ValueError(f"Ordinal must be 0..1200, got {ordinal}")
+        cid = int(LUT[ordinal])
+        pwd = rom.passwords.unlock(ordinal)
+        name = rom.card_names[ordinal]
+        text = rom.card_texts[ordinal] if show_text else None
+    elif card_id is not None:
+        matches = [i for i in range(1201) if LUT[i] == card_id]
+        if not matches:
+            raise ValueError(f"No card found with card_id {card_id}")
+        ordinal = matches[0]
+        cid = card_id
+        pwd = rom.passwords.unlock(ordinal)
+        name = rom.card_names[ordinal]
+        text = rom.card_texts[ordinal] if show_text else None
+    else:
+        raise ValueError("Provide one of: --ordinal, --card-id, --password")
+
+    return {
+        "ordinal": ordinal,
+        "card_id": cid,
+        "name": name,
+        "password": pwd,
+        "text": text,
+    }
+
+
 def patch_string_table_bulk(rom_file, table_name, csv_file, output_rom):
     """Patch multiple string table entries from a CSV, rebuilding the offset table.
 

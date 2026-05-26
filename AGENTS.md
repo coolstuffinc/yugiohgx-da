@@ -1,151 +1,131 @@
-# yugiohgx-da — Agent Guidance
+# `agents.md` — Agent Guidance for yugiohgx-da
 
-See `docs/` for GBA-specific format notes (card pile backgrounds, strings, encoding, etc.).
+> **Principle**: Keep the agent's context focused on *workflow*, not *implementation*. All GBA-specific technical details (formats, encodings, memory maps) live in `docs/`. Reference them—don't repeat them.
 
-## Commands
+---
 
-```sh
-uv sync                          # install deps (numpy, pillow)
-uv run python3 -m unittest discover -s tests -v          # all unit tests
-uv run python3 -m unittest tests.test_memory_ops -v      # single module
-uv run python3 tests/test_rom_integration.py --rom /path/to/game.gba  # integration
-uv run ygogxda <subcommand>     # CLI entrypoint
-uv run python3 dumps/dump_sprites.py  # ad-hoc debug dumps
+## 🎯 Agent Role
+
+You are a **reverse-engineering assistant** for the `yugiohgx-da` project: a Python toolchain for analyzing and patching the GBA Yu-Gi-Oh! GX ROM.
+
+**Your goal**: Help map unknown code by following data references from human-readable strings → functions → system behavior, then annotate findings via Ghidra MCP.
+
+---
+
+## 🔁 Core Workflow Loop
+
+Follow this iterative cycle. **Stop and document** after each major discovery.
+
+```mermaid
+graph LR
+    A[Start: Interesting strings] --> B[Find string references]
+    B --> C[Trace to calling functions]
+    C --> D[Map FUN_<ADDR> behavior]
+    D --> E{Purpose clear?}
+    E -- Yes --> F[Annotate via Ghidra MCP]
+    E -- No --> G[Collect more context / ask]
+    F --> A
+    G --> A
 ```
 
-Env: `YGOGXDA_TEST_ROM` sets ROM path for integration tests. Tests also accept `--rom` arg.
+### Step-by-Step
 
-There is no `setup.py` or `Makefile` — `pyproject.toml` drives everything via setuptools + uv.
+1. **🔍 Start with strings**  
+   - Target: dialog, UI labels, card names (`card_names_en`, `ui_en`, etc.)  
+   - Use: `src/ygogxda/memory_map.py` for canonical table paths  
+   - *Reference*: `docs/strings.md` for encoding/offset table format
 
-## Project layout
+2. **🧵 Find references**  
+   - Search ROM for pointers to string offsets  
+   - Identify functions that load/pass these strings  
+   - *Reference*: `docs/memory_addressing.md` for real vs. virtual address translation
 
-- `src/ygogxda/cli.py` — CLI entrypoint (`main()`), registered as `ygogxda` script
-- `src/ygogxda/rom.py` — `YugiohROM` class: memory region definitions + data accessors
-- `src/ygogxda/memory.py` — `MemoryEmulator`: byte-level ROM read/write with real/virtual address translation
-- `src/ygogxda/memory_ops.py` — high-level extract/patch operations wired to CLI
-- `src/ygogxda/memory_map.py` — canonical path registry for `memory dump` and string table references
-- `src/ygogxda/coverage.py` — `ROM_LAYOUT` list describing all known memory regions
-- `tests/` — stdlib `unittest`, no pytest. Tests synthesize ROMs via `build_synthetic_rom()` helpers.
-- `dumps/` — ad-hoc debug scripts (not part of the library)
+3. **🔗 Trace callers**  
+   - Walk up the call graph: who calls the string-loading function?  
+   - Look for patterns: menu handlers, battle logic, text rendering  
+   - *Reference*: `docs/ghidra_workflow.md` for cross-referencing strategies
 
-Dead files: `src/main.py`, `src/testing.py` (empty), `src/japanese_encondings.py` (typo, unused).
+4. **🗺️ Map unnamed functions**  
+   - Rename `FUN_<ADDR>` to descriptive placeholders:  
+     - `load_card_text()`, `render_dialog_box()`, `init_duel_state()`  
+   - Add minimal comments: *what* it does, not *how* (GBA details in `docs/`)
 
-## Memory addressing
+5. **✏️ Annotate via Ghidra MCP**  
+   - When confident: use MCP to **rename**, **comment**, and **tag** symbols  
+   - Commit changes to `ygogxda.gba` project  
+   - Update `src/ygogxda/coverage.py` if new regions are discovered  
+   - *Reference*: `docs/ghidra_mcp.md` for tool commands
 
-GBA ROM is mapped at base address **0x08000000**. `MemoryEmulator` works with both:
-- **Real addresses** (0x08000000-based) — used in `YugiohROM` region definitions
-- **Virtual addresses** (0-based offsets into the raw file) — internal to `MemoryEmulator`
+---
 
-All `YugiohROM` region constants (e.g. `CARD_HIGH_RES_BITMAPS = slice(0x087CFACC, ...)`) use **real** addresses. The constructor reads from a `MemoryEmulator` that handles translation.
+## 📁 Project Quick-Ref
 
-## Card pile background layer API
+```
+src/ygogxda/
+├── cli.py          # CLI entrypoint (ygogxda <subcommand>)
+├── rom.py          # YugiohROM: region definitions (real addresses)
+├── memory.py       # MemoryEmulator: address translation layer
+├── memory_ops.py   # High-level extract/patch operations
+├── memory_map.py   # Canonical paths for strings/tables ← START HERE
+└── coverage.py     # ROM_LAYOUT: known memory regions
 
-`YugiohROM` has these card pile background methods:
-
-| Method | Returns | Description |
-|---|---|---|
-| `card_pile_background(index)` | `PIL.Image` | Composite image (all banks merged, 240×160) |
-| `card_pile_backgrounds()` | generator of `PIL.Image` | All 8 composites |
-| `card_pile_background_layers(index)` | `(layers_dict, pal_n, pal_payload)` | Per-bank images as `{bank: np.array}` (160×240, pixel values 0-15) |
-| `encode_card_pile_background(layers, pal_n, pal_payload)` | `bytes` (static) | Re-encode layers into card pile background format |
-| `patch_card_pile_background(index, layers)` | `None` | Encode and write layers back into the ROM in-place |
-
-CLI:
-```sh
-ygogxda sprites extract card-pile --rom game.gba --index 0    # single entry
-ygogxda sprites extract card-pile --rom game.gba               # all 8 entries
-ygogxda sprites patch card-pile --rom game.gba --output patched.gba  # patch all from canonical dir
-ygogxda sprites patch card-pile --rom game.gba --index 0 --layers-dir ./layers --output patched.gba
+docs/               # ← GBA technical details live here (do not duplicate)
+tests/              # unittest suite; synthetic ROM helpers
+dumps/              # Ad-hoc debug scripts
 ```
 
-The encode uses flip-aware global tile dedup (checks all 4 orientations: original, H-flip, V-flip, HV-flip). The re-encoded data must fit within the original entry's slot — raises `ValueError` if it doesn't.
+**Essential commands**:
+```sh
+uv sync                                           # Install deps
+uv run ygogxda memory dump <region>              # Inspect a memory region
+uv run ygogxda strings extract <table>           # Dump string table
+uv run python -m unittest tests/test_*.py -v     # Run tests
+```
 
-## Graphics encoding (GBA)
+> ⚠️ **No pytest**. Tests use stdlib `unittest`. Synthetic ROMs via `build_synthetic_rom()`.
 
-**8bpp tiled format** (card artworks, duelist sprites, token sprites):
-- Data stored as `[tile_row][tile_col][px_row][px_col]` — reshape with `(tiles_high, tiles_wide, 8, 8)`, then `join_blocks((tiles_high, tiles_wide))` from `utils.py`
-- Palette: 128 bytes = 64 × 16-bit little-endian GBA colors. Bit 15 is ignored by hardware. Use `image.putpalette(palette, rawmode="RGB;15")` for correct decoding.
+---
 
-**4bpp tiled format** (card pile backgrounds):
-- Each tile is 32 bytes in standard GBA row-major nibble-packed format: 8 rows × 4 bytes per row. Each byte = 2 pixels (upper nibble = even/left column, lower nibble = odd/right column).
-- Background data structure (reverse-engineered from `FUN_080ad2b4`):
-  1. `u16[0]` = palette color count (`pal_n`); `u16[1..3]` = same value (redundant)
-  2. Palette: bytes 8..8+pal_n*2 (GBA 15-bit little-endian colors). Color 0 of each 16-color bank is `0x7C1F` (magenta/transparent).
-  3. Metadata at offset `pal_n*2 + 8`: `u16[0]` = tile count (`n_tiles`)
-  4. Tile data at offset `pal_n*2 + 16`: `n_tiles` × 32 bytes (4bpp row-major nibble-packed)
-  5. Screen entry pairs immediately following tile data: `u16[0]` = pair count, 6 bytes padding, then pairs of `[src_u16, dst_u16]`. src low 6 bits = dest position in 32-wide BG map (values 0-31 → charblock 0, 32-63 → charblock 1, subtract 32). dst = GBA screen entry format (bits 0-9 = tile idx, 10 = H-flip, 11 = V-flip, 12-15 = palette bank).
-- Screen entries retain their original palette bank values (bits 12-15: 0, 1, or 2). The decoder must use per-entry bank selection: pixel value `n` in a tile at bank `b` maps to file color `b*16 + n`. Build a full 256-color palette from the file (pad unused entries with `0x7C1F`/magenta) and offset each tile's pixel values by `bank * 16` on the canvas.
-- The underlying file palette has ~43 colors spanning 3 banks. Bank separators at indices 0, 16, 32 each start with `0x7C1F`.
-- Rendered result: 240×160 pixels (30×20 tiles in a 32-wide map). Rely on `rom.card_pile_backgrounds()` or `rom.card_pile_background(index)` rather than manual decoding.
+## 🧭 Decision Guidelines
 
-### Reverse-engineering notes (FUN_080ad2b4)
+| Situation | Action |
+|-----------|--------|
+| Found a string reference at `0x08XXXXXX` | Check if it's in `memory_map.py` canonical tables. If not, propose adding it. |
+| `FUN_08012340` loads multiple UI strings | Rename to `load_ui_text_batch()`; add comment: "Called during menu init" |
+| Unclear if function is game logic or engine | Flag for human review; collect caller/callee context first |
+| Ghidra MCP returns error | Verify `opencode.json` config; ensure `ygogxda.gba` is loaded in Ghidra |
+| New memory region discovered | Update `coverage.py` ROM_LAYOUT; add docs entry; **do not hardcode elsewhere** |
 
-The game function `FUN_080ad2b4` loads card pile backgrounds. Key observations:
+---
 
-**Palette layout (entry 0 example, 43 colors):**
-| File index | GBA bank | Usage | Key colors |
-|---|---|---|---|
-| 0-15 | Bank 1 (PAL+32) | Card art background layer | Dark browns, blue-grays |
-| 16-31 | Bank 2 (PAL+64) | Duel field/terrain layer | Warmer browns, tans, white |
-| 32-42 | Bank 3 (PAL+96) | UI overlay frame | Grays, white |
+## 🚫 Anti-Patterns
 
-Each bank starts with `0x7C1F` (magenta/transparent). Colors at indices 0-2 are identical across banks 1 and 2; indices 3-15 differ.
+- ❌ Don't paste GBA hardware details (4bpp tiles, 15-bit color, etc.) into comments—link to `docs/`
+- ❌ Don't rename functions based on a single reference—wait for behavioral confirmation
+- ❌ Don't modify test helpers (`build_synthetic_rom`) without syncing both `test_*.py` files
+- ❌ Don't assume string encoding—always check `docs/strings.md` or `japanese_rom` codec
 
-**How `FUN_080ad2b4` works:**
-1. Reads `pal_n` from header, copies `pal_n` colors from the entry's palette data into GBA palette RAM at `PALETTE + param_4 * 32` (so file[0] lands at PALETTE[param_4*16], etc.)
-2. Parses tile data and screen entry pairs
-3. For each screen entry, sets bits 12-15 (palette bank) to `param_4` — this overrides whatever bank was originally in the file data
-4. Writes tiles to VRAM charbase block(s)
+---
 
-However, the original screen entries in the ROM file have their own palette bank values (0, 1, 2). The game's override to `param_4` is a runtime thing — for decoding/editing, we use the original file-level bank values.
+## 💬 When to Ask
 
-**Two render passes:** `render_duel_field_background` calls `FUN_080ad2b4` twice:
-1. First: `param_4=1`, main entry data pointer (palette goes to GBA bank 1)
-2. Second (conditional): `param_4=5`, different data pointer `puVar3` (unknown — possibly a shared/common overlay)
+Pause and request human input when:
+- A function has >3 distinct call sites with different behaviors
+- String references point to overlapping or ambiguous regions
+- Ghidra MCP annotation fails repeatedly
+- You discover a region not in `coverage.py`
 
-**Entry 7 anomaly:** Contains a standard sub-background (same format as entries 0-6) followed by ~1.6MB of extra data. Format of remaining data unknown — may be a pool of shared tiles or other resources.
+> **Default assumption**: If it's not in `docs/`, it's not stable. Verify before proceeding.
 
-**Tile dedup in original data:** The original 600 tile positions (30×20 visible area) reference only ~408 unique tiles. Many tiles are shared via H-flip/V-flip (bits 10-11 in dst). The encoder recreates this with flip-aware dedup.
+---
 
-**Common pitfalls:**
-- Bitplane-interleaved 4bpp (used by some GBA tools) produces magenta "splattered" output (~31% pixel value 0). Always use row-major nibble-packed.
-- Tile flip bits (H/V) are pre-applied when decoding to layer images. The encoder re-detects flips during dedup.
-- Palette bank 0 in screen entries accesses GBA palette bank 0 (PAL+0..31), which may contain data loaded by a prior operation (e.g., main background). Not all 3 banks are purely from the card pile background entry.
+## 🔄 Session Hygiene
 
-**Sprite dimensions:**
-| Resource | Size | Tiles | Palette colors |
-|---|---|---|---|
-| Card artwork | 80×80 | 10×10 | 64 |
-| Duelist sprite | 64×64 | 8×8 | 64 |
-| Location thumb | 96×64 | 12×8 | 64 |
-| Token sprite | 80×80 | 10×10 | 64 |
+1. Start each session by confirming: *What string/table are we tracing today?*
+2. After each annotation push: run `uv run python -m unittest discover -s tests -v`
+3. Before proposing a rename: search for existing uses of the proposed name
+4. End session with: *What's the next lowest-hanging string to trace?*
 
-## Known regions (coverage.py)
+---
 
-Tokens (BIG_2): `0x090A0610` — pointer table (14 entries), each entry = palette(0x80) + pixel_data(0x1900), stride 0x1980. Some entries share pointers.
-Card pile backgrounds: `0x092515F4` — 8 entries, 4bpp tiled, variable-sized, format described above.
-Characters: `0x091F24DC` — bitmaps, `0x09250780` — palettes; 29 duelists × 5 pose variations.
-Location thumbs: `0x09772E14` — pointer table with 3 periods × 26 locations.
-
-## String tables
-
-Architecture: contiguous string blob + offset table of uint32 LE. String region has `num_entries + 1` offsets — entry i spans `[offsets[i], offsets[i+1])`.
-
-Canonical string tables (used by CLI): `card_names_en`, `card_names_jp` (encoding `japanese_rom`), `card_texts_en`, `ui_en`.
-
-## Testing quirks
-
-- `test_rom_integration.py` — mocks `_read_card_artworks` so it runs without ROM. Real ROM used if `YGOGXDA_TEST_ROM` is set.
-- `test_memory_ops.py` — builds full synthetic ROMs with pointer tables, bitmap/palette data, and offsets. Covers sprite extract, patch round-trips, string bulk patching.
-- Many tests mock `YugiohROM._read_card_artworks` because the artwork generator requires real ROM data (no synthetic fallback currently).
-- `build_synthetic_rom()` in both test files must be kept in sync with any new `YugiohROM` regions added.
-
-## Ghidra MCP
-
-Configured in `opencode.json` — connects to `http://127.0.0.1:8080/`. Uses `ygogxda.gba` as the analyzed ROM.
-
-## Code style
-
-- No type annotations on most existing code. Prefer to match surrounding style.
-- `PIL.Image.putpalette(rawmode="RGB;15")` handles GBA 15-bit color (bit 15 ignored) — do not manually mask.
-- `numpy.reshape` order for tiled data: `(tiles_high, tiles_wide, 8, 8)`, then `join_blocks((tiles_high, tiles_wide))`.
+> ℹ️ **Remember**: You're building a *map*, not rewriting the engine. Clarity > completeness. Link to `docs/` for the "how"; focus your output on the "what" and "where".

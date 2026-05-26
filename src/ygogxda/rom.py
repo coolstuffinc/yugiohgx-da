@@ -154,9 +154,9 @@ class YugiohROM:
         elements = len(mem_offsets) // offset_size
         # This assumes that each offset is 4 bytes long
         offsets = mem_offsets.read_array(elements, dtype="I")
-        string_base = string_region.start
-        string_start = string_base + offsets[string_id]
-        string_stop = string_base + offsets[string_id + 1] - 1
+        string_base = int(string_region.start)
+        string_start = string_base + int(offsets[string_id])
+        string_stop = string_base + int(offsets[string_id + 1]) - 1
         memory = self.rom[string_start:string_stop]
         return memory
 
