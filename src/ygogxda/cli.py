@@ -12,6 +12,7 @@ class _HelpOnErrorParser(argparse.ArgumentParser):
 
 from .memory_map import CANONICAL_STRING_TABLES, list_memory_paths
 from .memory_ops import (
+    decode_card_stats,
     dump_region,
     extract_card_artworks,
     extract_duelist_sprites,
@@ -21,6 +22,7 @@ from .memory_ops import (
     lookup_card,
     patch_card_image,
     patch_card_pile_background_from_files,
+    patch_card_stats,
     patch_duelist_sprite,
     patch_location_thumb,
     patch_string_entry,
@@ -149,6 +151,7 @@ def _cmd_card_lookup(args):
         card_id=args.card_id,
         password=args.password,
         show_text=args.text,
+        show_stats=args.stats,
     )
     print(f"ordinal:  {result['ordinal']}")
     print(f"card_id:  {result['card_id']}")
@@ -156,6 +159,47 @@ def _cmd_card_lookup(args):
     print(f"password: {result['password']}")
     if result["text"] is not None:
         print(f"text:     {result['text']}")
+    stats = result.get("stats")
+    if stats is not None:
+        print(f"category: {stats['category']}")
+        if stats["category"] == "Monster":
+            print(f"  type:      {stats['type']}")
+            print(f"  attribute: {stats['attribute']}")
+            print(f"  level:     {stats['level']}")
+            print(f"  ATK:       {stats['atk']}")
+            print(f"  DEF:       {stats['def']}")
+            print(f"  subtype:   {stats['subtype']}")
+        elif stats["category"] in ("Spell", "Trap"):
+            print(f"  subtype: {stats['subtype']}")
+    return 0
+
+
+def _cmd_card_patch(args):
+    ordinal = args.ordinal
+    kwargs = {}
+    if args.category is not None:
+        kwargs["category"] = args.category
+    if args.type is not None:
+        kwargs["type"] = args.type
+    if args.attribute is not None:
+        kwargs["attribute"] = args.attribute
+    if args.level is not None:
+        kwargs["level"] = args.level
+    if args.atk is not None:
+        kwargs["atk"] = args.atk
+    if args.defense is not None:
+        kwargs["def"] = args.defense
+    new_val = patch_card_stats(args.rom, ordinal, args.output, **kwargs)
+    decoded = decode_card_stats(new_val)
+    print(f"Patched ordinal {ordinal}")
+    print(f"  raw value: 0x{new_val:08X}")
+    if decoded["category"] == "Monster":
+        print(
+            f"  type={decoded['type']}  attr={decoded['attribute']}  Lv{decoded['level']}  "
+            f"ATK={decoded['atk']}  DEF={decoded['def']}  ({decoded['subtype']})"
+        )
+    else:
+        print(f"  {decoded['category']} ({decoded['subtype']})")
     return 0
 
 
@@ -406,7 +450,37 @@ def build_parser():
     card_lookup_parser.add_argument(
         "--text", action="store_true", help="Show card effect text"
     )
+    card_lookup_parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="Show decoded card stats (ATK/DEF/level/type)",
+    )
     card_lookup_parser.set_defaults(func=_cmd_card_lookup)
+
+    # card patch
+    card_patch_parser = card_subparsers.add_parser(
+        "patch", help="Patch a card's stats (ATK, DEF, level, type, etc.)"
+    )
+    card_patch_parser.add_argument("--rom", required=True, help="Input ROM file")
+    card_patch_parser.add_argument(
+        "--ordinal", type=int, required=True, help="Card ordinal index (0..1200)"
+    )
+    card_patch_parser.add_argument("--output", required=True, help="Output ROM file")
+    card_patch_parser.add_argument(
+        "--category", help="Monster: normal/effect/fusion/ritual"
+    )
+    card_patch_parser.add_argument(
+        "--type", help="Monster type: dragon, zombie, fiend, warrior, spellcaster, ..."
+    )
+    card_patch_parser.add_argument(
+        "--attribute", help="Monster attribute: light, dark, water, fire, earth, wind"
+    )
+    card_patch_parser.add_argument("--level", type=int, help="Monster level (1-12)")
+    card_patch_parser.add_argument("--atk", type=int, help="ATK (0-5110, actual value)")
+    card_patch_parser.add_argument(
+        "--def", dest="defense", type=int, help="DEF (0-5110, actual value)"
+    )
+    card_patch_parser.set_defaults(func=_cmd_card_patch)
 
     return parser
 

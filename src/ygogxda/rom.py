@@ -62,6 +62,10 @@ class YugiohROM:
     #
     CARD_TOKEN_INFO = slice(0x090A0540, 0x090A0610)
     TOKEN_SPRITES = mem_region(0x090A0610, 14 * 4)  # 14 ptrs to token sprites
+    # Card Stats
+    CARD_STATS = mem_region(
+        0x08F243CC, 1201 * 4
+    )  # 1201 uint32: bit-packed attr|level|type|ATK|DEF
     # LUT
     # - Ordinal number to id
     CARD_NUMBER_TO_ID = mem_region(0x087A8624, 1201 * 2)  # 1201 words (2 Bytes)

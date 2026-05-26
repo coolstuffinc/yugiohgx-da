@@ -79,6 +79,11 @@ dumps/              # Ad-hoc debug scripts
 uv sync                                           # Install deps
 uv run ygogxda memory dump <region>              # Inspect a memory region
 uv run ygogxda strings extract <table>           # Dump string table
+uv run ygogxda card lookup --ordinal N           # Look up card by ordinal index
+uv run ygogxda card lookup --card-id N           # Look up card by internal card ID
+uv run ygogxda card lookup --password STR        # Look up card by 8-digit password
+uv run ygogxda card lookup --ordinal N --stats   # Also show decoded card stats (ATK/DEF/level/type)
+uv run ygogxda card lookup --ordinal N --text    # Also show card effect text
 uv run python -m unittest tests/test_*.py -v     # Run tests
 ```
 

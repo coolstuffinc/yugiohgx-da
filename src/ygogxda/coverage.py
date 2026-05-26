@@ -75,7 +75,11 @@ ROM_LAYOUT = [
         "graphics",
     ),
     ROMRegion(
-        "UNKNOWN_TABLE", 0x08F243CC, 0x08F25690, "Unknown 1201 x uint32 table?", "data"
+        "CARD_STATS",
+        0x08F243CC,
+        0x08F25690,
+        "Card stats: attr|level|type|ATK|DEF bitfield (1201 x uint32)",
+        "data",
     ),
     # English strings
     ROMRegion("CARD_NAMES_EN", 0x08F25690, 0x08F2A68B, "English card names", "strings"),
@@ -231,10 +235,24 @@ ROM_LAYOUT = [
         "CARD_TYPE_PTRS", 0x097D7BB8, 0x097D7BF7, "Card type name pointers (7)", "data"
     ),
     ROMRegion(
-        "STR_UNKNOWN_1",
+        "CARD_SPECIFIC_EFFECTS",
+        0x097DA800,
+        0x097E12B4,
+        "Card-specific effect handler table (~887 entries x 28B)",
+        "data",
+    ),
+    ROMRegion(
+        "STR_UNKNOWN_1A",
         0x097D7BF7,
+        0x097DA800,
+        "Unknown (~10 KB, before card effect table)",
+        "unknown",
+    ),
+    ROMRegion(
+        "STR_UNKNOWN_1B",
+        0x097E12B4,
         0x097F0BC8,
-        "String data / unknown (~99 KB)",
+        "Unknown (~63 KB, after card effect table)",
         "unknown",
     ),
     # Character names
