@@ -1,6 +1,15 @@
 import argparse
 import sys
 
+
+class _HelpOnErrorParser(argparse.ArgumentParser):
+    def error(self, message):
+        msg = f"{self.prog}: error: {message}\n\n"
+        sys.stderr.write(msg)
+        self.print_help()
+        sys.exit(2)
+
+
 from .memory_map import CANONICAL_STRING_TABLES, list_memory_paths
 from .memory_ops import (
     dump_region,
@@ -102,6 +111,29 @@ def _cmd_sprites_extract_card_pile(args):
     return 0
 
 
+def _cmd_sprites_extract_all(args):
+    extract_card_artworks(args.rom)
+    extract_duelist_sprites(args.rom)
+    extract_location_thumbs(args.rom)
+    extract_card_pile_layers(args.rom)
+    return 0
+
+
+def _cmd_sprites_extract(args):
+    if args.all:
+        return _cmd_sprites_extract_all(args)
+    dispatch = {
+        "card": _cmd_sprites_extract_cards,
+        "duelist": _cmd_sprites_extract_duelists,
+        "location-thumb": _cmd_sprites_extract_locations,
+        "card-pile": _cmd_sprites_extract_card_pile,
+    }
+    if args.sprites_resource in dispatch:
+        return dispatch[args.sprites_resource](args)
+    print(f"error: unknown sprite resource '{args.sprites_resource}'", file=sys.stderr)
+    return 1
+
+
 def _cmd_sprites_patch_card_pile(args):
     patch_card_pile_background_from_files(
         args.rom, index=args.index, layers_dir=args.layers_dir, output_rom=args.output
@@ -110,12 +142,14 @@ def _cmd_sprites_patch_card_pile(args):
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(prog="ygogxda")
-    subparsers = parser.add_subparsers(dest="command")
+    parser = _HelpOnErrorParser(prog="ygogxda")
+    subparsers = parser.add_subparsers(dest="command", parser_class=_HelpOnErrorParser)
 
     # ── memory ────────────────────────────────────────────────────────────────
     memory_parser = subparsers.add_parser("memory", help="Memory mapping utilities")
-    memory_subparsers = memory_parser.add_subparsers(dest="memory_command")
+    memory_subparsers = memory_parser.add_subparsers(
+        dest="memory_command", parser_class=_HelpOnErrorParser
+    )
 
     paths_parser = memory_subparsers.add_parser(
         "paths", help="List canonical memory paths"
@@ -138,7 +172,9 @@ def build_parser():
     strings_parser = subparsers.add_parser(
         "strings", help="String table extraction and patching"
     )
-    strings_subparsers = strings_parser.add_subparsers(dest="strings_action")
+    strings_subparsers = strings_parser.add_subparsers(
+        dest="strings_action", parser_class=_HelpOnErrorParser
+    )
 
     strings_extract_parser = strings_subparsers.add_parser(
         "extract", help="Extract string table entries to CSV"
@@ -187,60 +223,51 @@ def build_parser():
     sprites_parser = subparsers.add_parser(
         "sprites", help="Sprite extraction and patching"
     )
-    sprites_action_subparsers = sprites_parser.add_subparsers(dest="sprites_action")
+    sprites_action_subparsers = sprites_parser.add_subparsers(
+        dest="sprites_action", parser_class=_HelpOnErrorParser
+    )
 
     # sprites extract
     sprites_extract_parser = sprites_action_subparsers.add_parser(
         "extract", help="Extract sprites"
     )
+    sprites_extract_parser.add_argument("--rom", required=True, help="Input ROM file")
+    sprites_extract_parser.add_argument(
+        "--all", action="store_true", help="Extract all sprite types"
+    )
     sprites_extract_subparsers = sprites_extract_parser.add_subparsers(
-        dest="sprites_resource"
+        dest="sprites_resource", parser_class=_HelpOnErrorParser, required=False
     )
 
     sprites_extract_card_parser = sprites_extract_subparsers.add_parser(
         "card", help="Extract all high-resolution card artworks"
     )
     sprites_extract_card_parser.add_argument(
-        "--rom", required=True, help="Input ROM file"
-    )
-    sprites_extract_card_parser.add_argument(
         "--output-dir",
         default=None,
         help="Directory for extracted images (default: <rom>.extracted/sprites/cards/)",
     )
-    sprites_extract_card_parser.set_defaults(func=_cmd_sprites_extract_cards)
 
     sprites_extract_duelist_parser = sprites_extract_subparsers.add_parser(
         "duelist", help="Extract all duelist sprite variations"
-    )
-    sprites_extract_duelist_parser.add_argument(
-        "--rom", required=True, help="Input ROM file"
     )
     sprites_extract_duelist_parser.add_argument(
         "--output-dir",
         default=None,
         help="Directory for extracted images (default: <rom>.extracted/sprites/duelists/)",
     )
-    sprites_extract_duelist_parser.set_defaults(func=_cmd_sprites_extract_duelists)
 
     sprites_extract_location_parser = sprites_extract_subparsers.add_parser(
         "location-thumb", help="Extract academy location thumbnails"
     )
     sprites_extract_location_parser.add_argument(
-        "--rom", required=True, help="Input ROM file"
-    )
-    sprites_extract_location_parser.add_argument(
         "--output-dir",
         default=None,
-        help="Directory for extracted images (default: <rom>.extracted/sprites/locations/)",
+        help="Directory for extracted images (default: <rom>.extracted/sprites/locations/thumbs/)",
     )
-    sprites_extract_location_parser.set_defaults(func=_cmd_sprites_extract_locations)
 
     sprites_extract_card_pile_parser = sprites_extract_subparsers.add_parser(
         "card-pile", help="Extract card pile background layers"
-    )
-    sprites_extract_card_pile_parser.add_argument(
-        "--rom", required=True, help="Input ROM file"
     )
     sprites_extract_card_pile_parser.add_argument(
         "--index",
@@ -253,14 +280,14 @@ def build_parser():
         default=None,
         help="Directory for extracted images (default: <rom>.extracted/sprites/card_piles/)",
     )
-    sprites_extract_card_pile_parser.set_defaults(func=_cmd_sprites_extract_card_pile)
+    sprites_extract_parser.set_defaults(func=_cmd_sprites_extract)
 
     # sprites patch
     sprites_patch_parser = sprites_action_subparsers.add_parser(
         "patch", help="Patch sprites"
     )
     sprites_patch_subparsers = sprites_patch_parser.add_subparsers(
-        dest="sprites_resource"
+        dest="sprites_resource", parser_class=_HelpOnErrorParser
     )
 
     sprites_patch_card_parser = sprites_patch_subparsers.add_parser(

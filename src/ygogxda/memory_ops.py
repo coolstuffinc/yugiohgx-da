@@ -32,7 +32,7 @@ LOCATION_THUMB_PALETTE_COLORS = 64
 
 SUBDIR_CARDS = Path("sprites") / "cards"
 SUBDIR_DUELISTS = Path("sprites") / "duelists"
-SUBDIR_LOCATIONS = Path("sprites") / "locations"
+SUBDIR_LOCATIONS = Path("sprites") / "locations" / "thumbs"
 SUBDIR_STRINGS = Path("strings")
 SUBDIR_MEMORY = Path("memory")
 

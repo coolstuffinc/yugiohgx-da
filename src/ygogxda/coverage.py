@@ -110,8 +110,8 @@ ROM_LAYOUT = [
         "UNKNOWN_BIG_1",
         0x08F61183,
         0x090A0540,
-        "Unknown: likely sprites/graphics (~1276 KB)",
-        "unknown",
+        "4bpp tiled bitmaps: card shop, code entry UI, suitcase sprite (~1276 KB, 22 images)",
+        "graphics",
     ),
     ROMRegion("CARD_TOKEN_INFO", 0x090A0540, 0x090A0610, "Token card data", "data"),
     ROMRegion(
@@ -197,11 +197,11 @@ ROM_LAYOUT = [
         "strings",
     ),
     ROMRegion(
-        "UNKNOWN_BIG_4",
+        "CARD_PILE_GFX",
         0x094EEF57,
         0x09772E14,
-        "Unknown: likely game sprites/graphics (~2575 KB)",
-        "unknown",
+        "Card-pile-format 4bpp graphics: 3D card rotation animation (panel + cropped variants), bg frames, UI panels (~2575 KB)",
+        "graphics",
     ),
     # Location thumbnails
     ROMRegion(
