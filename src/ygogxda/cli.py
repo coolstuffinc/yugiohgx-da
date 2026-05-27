@@ -16,6 +16,7 @@ from .memory_ops import (
     decode_card_stats,
     dump_region,
     extract_card_artworks,
+    extract_card_packs,
     extract_duelist_sprites,
     extract_card_pile_layers,
     extract_location_thumbs,
@@ -90,6 +91,11 @@ def _cmd_sprites_extract_cards(args):
     return 0
 
 
+def _cmd_sprites_extract_packs(args):
+    extract_card_packs(args.rom, args.output_dir)
+    return 0
+
+
 def _cmd_sprites_extract_duelists(args):
     extract_duelist_sprites(args.rom, args.output_dir)
     return 0
@@ -126,6 +132,7 @@ def _cmd_sprites_extract_card_pile(args):
 
 def _cmd_sprites_extract_all(args):
     extract_card_artworks(args.rom)
+    extract_card_packs(args.rom)
     extract_duelist_sprites(args.rom)
     extract_location_thumbs(args.rom)
     extract_card_pile_layers(args.rom)
@@ -137,6 +144,7 @@ def _cmd_sprites_extract(args):
         return _cmd_sprites_extract_all(args)
     dispatch = {
         "card": _cmd_sprites_extract_cards,
+        "card-pack": _cmd_sprites_extract_packs,
         "duelist": _cmd_sprites_extract_duelists,
         "location-thumb": _cmd_sprites_extract_locations,
         "card-pile": _cmd_sprites_extract_card_pile,
@@ -356,6 +364,15 @@ def build_parser():
         "--output-dir",
         default=None,
         help="Directory for extracted images (default: <rom>.extracted/sprites/cards/)",
+    )
+
+    sprites_extract_pack_parser = sprites_extract_subparsers.add_parser(
+        "card-pack", help="Extract all card pack portrait art"
+    )
+    sprites_extract_pack_parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Directory for extracted images (default: <rom>.extracted/sprites/card_packs/)",
     )
 
     sprites_extract_duelist_parser = sprites_extract_subparsers.add_parser(

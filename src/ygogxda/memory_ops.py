@@ -36,6 +36,7 @@ SUBDIR_DUELISTS = Path("sprites") / "duelists"
 SUBDIR_LOCATIONS = Path("sprites") / "locations" / "thumbs"
 SUBDIR_STRINGS = Path("strings")
 SUBDIR_MEMORY = Path("memory")
+SUBDIR_PACKS = Path("sprites") / "card_packs"
 
 
 def canonical_output_path(rom_file):
@@ -166,6 +167,15 @@ def extract_duelist_sprites(rom_file, output_dir=None):
                 output_path
                 / f"duelist-{duelist_index:02d}-variation-{variation_index}.png"
             )
+
+
+def extract_card_packs(rom_file, output_dir=None):
+    rom = YugiohROM(rom_file)
+    if output_dir is None:
+        output_dir = canonical_output_path(rom_file) / SUBDIR_PACKS
+    output_path = _ensure_output_dir(output_dir)
+    for index, image in enumerate(rom.card_pack_sprites()):
+        image.save(output_path / f"card_pack-{index:02d}.png")
 
 
 def extract_location_thumbs(rom_file, output_dir=None):

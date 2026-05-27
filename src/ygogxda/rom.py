@@ -22,6 +22,8 @@ class YugiohROM:
     CHARACTERS_BITMAPS = slice(0x091F24DC, 0x09250780)
     CHARACTERS_PALETTES = slice(0x09250780, 0x092515F4)
     DUEL_FIELD_BG = slice(0x092515F4, 0x093F6DF0)
+    CARD_PACK_BITMAPS = slice(0x0947EBB0, 0x094C21B0)
+    CARD_PACK_PALETTES = slice(0x094C2274, 0x094C34D4)
     # English
     # - string section
     CARD_NAMES_EN = slice(0x08F25690, 0x08F2A68B)  # 0x00, 0x00, Blue...
@@ -582,6 +584,36 @@ class YugiohROM:
             )
         padded = encoded + b"\x00" * (max_size - len(encoded))
         self.rom[mem_region(p_entry, max_size)] = padded
+
+    def card_pack_sprites(self):
+        """Returns a generator with portrait art for each card pack."""
+        # 49 entries, but let's be safe and check table boundaries
+        p_layouts = self.rom[YugiohROM.CARD_PACK_BITMAPS].read_pointers(49)
+        # Palettes are contiguous blocks of 96 bytes starting at 0x094C2274
+        pal_base = YugiohROM.CARD_PACK_PALETTES.start
+
+        for idx, p_layout in enumerate(p_layouts):
+            # 88 tiles * 64 bytes/tile = 5632 bytes
+            data = self.rom.read_bytes(5632, offset=p_layout)
+            # Palette is 48 colors (96 bytes)
+            pal_data = self.rom.read_bytes(96, offset=pal_base + idx * 96)
+
+            # 8bpp tiles (8x11 grid)
+            tiles = GBAGraphics.decode_8bpp_tiles(data)
+            canvas = join_blocks(tiles.reshape(11, 8, 8, 8), (11, 8))
+
+            # The pack renderer adds 160 to indices.
+            # We can either shift the palette or the pixels.
+            # Shifting the palette is cleaner for GBAGraphics.create_image.
+            full_pal = bytearray(512)
+            # Map our 48 colors to entries 160-207
+            full_pal[160 * 2 : 160 * 2 + 96] = pal_data
+
+            # Also shift the pixels to entry 160+
+            mask = canvas != 0
+            canvas[mask] = (canvas[mask].astype(np.uint16) + 160) & 0xFF
+
+            yield GBAGraphics.create_image(canvas, full_pal)
 
     def card_filter_icons(self):
         """
