@@ -14,4 +14,5 @@
 - [[GBA-Technical-Reference|GBA Technical Reference]]
 - [[Reverse-Engineering-Strategy|Reverse Engineering Strategy]]
 - [[Ghidra-Setup|Ghidra Setup]]
+- [[Dialog-Format-System|Dialog Format System]]
 

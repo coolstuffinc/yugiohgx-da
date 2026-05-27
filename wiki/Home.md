@@ -14,6 +14,7 @@
 - **[GBA Technical Reference](GBA-Technical-Reference)** — Hardware specs, memory map, address translation, rendering pipeline
 - **[Reverse Engineering Strategy](Reverse-Engineering-Strategy)** — Beginner's guide: string tracing, workflow loop, what to map first
 - **[Ghidra Setup](Ghidra-Setup)** — Install, load ROM, MCP config, annotation workflow
+- **[Dialog Format System](Dialog-Format-System)** — `$`/`#`/`@` format codes, `format_text_processor`, key functions
 
 
 ---
