@@ -3,7 +3,9 @@ from .utils import *
 from .gba import GBAHeader
 from .passwords import YugiohPasswords
 from .japanese_encoding import decode as japanese_decode
+from .graphics import GBAGraphics
 from PIL import Image
+import numpy as np
 
 
 class YugiohROM:
@@ -60,6 +62,10 @@ class YugiohROM:
     #
     CARD_TOKEN_INFO = slice(0x090A0540, 0x090A0610)
     TOKEN_SPRITES = mem_region(0x090A0610, 14 * 4)  # 14 ptrs to token sprites
+    # Card Stats
+    CARD_STATS = mem_region(
+        0x08F243CC, 1201 * 4
+    )  # 1201 uint32: bit-packed attr|level|type|ATK|DEF
     # LUT
     # - Ordinal number to id
     CARD_NUMBER_TO_ID = mem_region(0x087A8624, 1201 * 2)  # 1201 words (2 Bytes)
@@ -152,9 +158,9 @@ class YugiohROM:
         elements = len(mem_offsets) // offset_size
         # This assumes that each offset is 4 bytes long
         offsets = mem_offsets.read_array(elements, dtype="I")
-        string_base = string_region.start
-        string_start = string_base + offsets[string_id]
-        string_stop = string_base + offsets[string_id + 1] - 1
+        string_base = int(string_region.start)
+        string_start = string_base + int(offsets[string_id])
+        string_stop = string_base + int(offsets[string_id + 1]) - 1
         memory = self.rom[string_start:string_stop]
         return memory
 
@@ -229,18 +235,15 @@ class YugiohROM:
         return data
 
     def _read_card_artworks(self):
-        """Returns a generator with artwork for each card"""
+        """Returns a generator with artwork for each card using GBAGraphics"""
         hires_bmp = self._read_hi_card_bitmaps()
         hires_pal = self._read_hi_card_palettes()
-        bmp = hires_bmp.reshape(1201, 10, 10, 8, 8)
-        pal = hires_pal
+        tiles = hires_bmp.reshape(-1, 8, 8)
         for idx in range(self.num_cards):
-            bitmap = bmp[idx]
-            palette = pal[idx]
-            array = join_blocks(bitmap, (10, 10))
-            image = Image.fromarray(array)
-            image.putpalette(palette, rawmode="RGB;15")
-            yield image
+            icon_tiles = tiles[idx * 100 : (idx + 1) * 100]
+            canvas = join_blocks(icon_tiles.reshape(10, 10, 8, 8), (10, 10))
+            palette = hires_pal[idx]
+            yield GBAGraphics.create_image(canvas, palette)
 
     def _read_lo_card_palettes(self):
         """Reads palettes for low res card artworks"""
@@ -263,29 +266,15 @@ class YugiohROM:
         p_duelist_bitmaps = mem_bitmaps.read_pointers(29)
         p_duelist_palette = mem_palettes.read_pointers(29)
 
-        duelist_bitmaps = []
-        for p_duelist in p_duelist_bitmaps:
-            p_variations = self.rom.read_pointers(5, offset=p_duelist)
-            variations = []
-            for p_bitmap in p_variations:
-                bitmap = self.rom.read_array(4096, offset=p_bitmap)
-                variations.append(bitmap)
-            duelist_bitmaps.append(variations)
-
-        duelist_palette = []
-        for p_palette in p_duelist_palette:
+        for p_duelist, p_palette in zip(p_duelist_bitmaps, p_duelist_palette):
             palette = self.rom.read_array(128, offset=p_palette)
-            duelist_palette.append(palette)
-
-        for variations, palette in zip(duelist_bitmaps, duelist_palette):
+            p_variations = self.rom.read_pointers(5, offset=p_duelist)
             images = []
-            for variation in variations:
-                array = variation.reshape(8, 8, 8, 8)
-                array = join_blocks(array, (8, 8))
-                array = array.reshape(64, 64)
-                image = Image.fromarray(array)
-                image.putpalette(palette, rawmode="RGB;15")
-                images.append(image)
+            for p_bitmap in p_variations:
+                data = self.rom.read_bytes(4096, offset=p_bitmap)
+                tiles = GBAGraphics.decode_8bpp_tiles(data)
+                canvas = join_blocks(tiles.reshape(8, 8, 8, 8), (8, 8))
+                images.append(GBAGraphics.create_image(canvas, palette))
             yield images
 
     def duelist_sprite_bitmap(self, duelist_index, variation_index):
@@ -317,86 +306,46 @@ class YugiohROM:
         return self.rom[p_duelist_palette[duelist_index], 128]
 
     def location_thumbs(self):
-        memory = self.rom[YugiohROM.ACADEMY_LOCATIONS_THUMBS]
-        # Read the 3 pointers for each period of day variations
-        p_bitmaps = memory.read_pointers(3)
-        p_palettes = memory.read_pointers(3, offset=3 * 4)
-
-        timeofday_bmps = []
-        # Loop over the day variations and handle the bitmaps
-        for p_bitmap in p_bitmaps:
-            p_locations = self.rom.read_pointers(26, offset=p_bitmap)
-            locations_bmps = []
-            # Loop over each Academy Location and extract a bitmap
-            for p_ in p_locations:
-                # The image has a header with
-                wtfisthis = self.rom.read_bytes(4, offset=p_)
-                bitmap = self.rom.read_array(6144, offset=p_ + 4)
-                locations_bmps.append(bitmap)
-            timeofday_bmps.append(locations_bmps)
-
-        timeofday_pals = []
-        # Loop over the day variations and handle their palettes
-        for p_palette in p_palettes:
-            p_locations = self.rom.read_pointers(26, offset=p_palette)
-            locations_pals = []
-            # Loop over each Academy Location and extract a palette
-            for p_ in p_locations:
-                palette = self.rom.read_array(128, offset=p_)
-                locations_pals.append(palette)
-            timeofday_pals.append(locations_pals)
-
-        for bitmaps, palettes in zip(timeofday_bmps, timeofday_pals):
+        base = YugiohROM.ACADEMY_LOCATIONS_THUMBS.start
+        p_bitmap_tables = self.rom[base, 12].read_pointers(3)
+        p_palette_tables = self.rom[base + 12, 12].read_pointers(3)
+        for p_bm_table, p_pal_table in zip(p_bitmap_tables, p_palette_tables):
+            p_bitmaps = self.rom.read_pointers(26, offset=p_bm_table)
+            p_palettes = self.rom.read_pointers(26, offset=p_pal_table)
             images = []
-            for bmp, pal in zip(bitmaps, palettes):
-                array = bmp.reshape(8, 12, 8, 8)
-                array = join_blocks(array, (8, 12))
-                image = Image.fromarray(array)
-                image.putpalette(pal, rawmode="RGB;15")
-                images.append(image)
+            for p_bmp, p_pal in zip(p_bitmaps, p_palettes):
+                data = self.rom.read_bytes(6144, offset=p_bmp + 4)
+                palette = self.rom.read_array(128, offset=p_pal)
+                tiles = GBAGraphics.decode_8bpp_tiles(data)
+                canvas = join_blocks(tiles.reshape(8, 12, 8, 8), (8, 12))
+                images.append(GBAGraphics.create_image(canvas, palette))
             yield images
 
     def location_thumb_bitmap(self, period_index, location_index):
-        memory = self.rom[YugiohROM.ACADEMY_LOCATIONS_THUMBS]
-        p_bitmaps = memory.read_pointers(3)
-        if period_index < 0 or period_index >= len(p_bitmaps):
-            raise IndexError(f"period_index must be between 0 and {len(p_bitmaps) - 1}")
-
-        p_locations = self.rom.read_pointers(26, offset=p_bitmaps[period_index])
-        if location_index < 0 or location_index >= len(p_locations):
-            raise IndexError(
-                f"location_index must be between 0 and {len(p_locations) - 1}"
-            )
-
-        return self.rom[p_locations[location_index] + 4, 6144]
+        base = YugiohROM.ACADEMY_LOCATIONS_THUMBS.start
+        p_bitmap_tables = self.rom[base, 12].read_pointers(3)
+        p_bm_table = p_bitmap_tables[period_index]
+        p_bitmaps = self.rom.read_pointers(26, offset=p_bm_table)
+        p_bmp = p_bitmaps[location_index]
+        return self.rom[p_bmp + 4, 6144]
 
     def location_thumb_palette(self, period_index, location_index):
-        memory = self.rom[YugiohROM.ACADEMY_LOCATIONS_THUMBS]
-        p_palettes = memory.read_pointers(3, offset=3 * 4)
-        if period_index < 0 or period_index >= len(p_palettes):
-            raise IndexError(
-                f"period_index must be between 0 and {len(p_palettes) - 1}"
-            )
-
-        p_locations = self.rom.read_pointers(26, offset=p_palettes[period_index])
-        if location_index < 0 or location_index >= len(p_locations):
-            raise IndexError(
-                f"location_index must be between 0 and {len(p_locations) - 1}"
-            )
-
-        return self.rom[p_locations[location_index], 128]
+        base = YugiohROM.ACADEMY_LOCATIONS_THUMBS.start
+        p_palette_tables = self.rom[base + 12, 12].read_pointers(3)
+        p_pal_table = p_palette_tables[period_index]
+        p_palettes = self.rom.read_pointers(26, offset=p_pal_table)
+        p_pal = p_palettes[location_index]
+        return self.rom[p_pal, 128]
 
     def token_sprites(self):
         mem = self.rom[YugiohROM.TOKEN_SPRITES]
         p_tokens = mem.read_pointers(14)
         for p_token in p_tokens:
             palette = self.rom.read_array(128, offset=p_token)
-            bitmap = self.rom.read_array(6400, offset=p_token + 0x80)
-            array = bitmap.reshape(10, 10, 8, 8)
-            array = join_blocks(array, (10, 10))
-            image = Image.fromarray(array)
-            image.putpalette(palette, rawmode="RGB;15")
-            yield image
+            data = self.rom.read_bytes(6400, offset=p_token + 0x80)
+            tiles = GBAGraphics.decode_8bpp_tiles(data)
+            canvas = join_blocks(tiles.reshape(10, 10, 8, 8), (10, 10))
+            yield GBAGraphics.create_image(canvas, palette)
 
     def token_sprite(self, index):
         num_tokens = 14
@@ -408,12 +357,10 @@ class YugiohROM:
         p_tokens = mem.read_pointers(num_tokens)
         p_token = p_tokens[index]
         palette = self.rom.read_array(128, offset=p_token)
-        bitmap = self.rom.read_array(6400, offset=p_token + 0x80)
-        array = bitmap.reshape(10, 10, 8, 8)
-        array = join_blocks(array, (10, 10))
-        image = Image.fromarray(array)
-        image.putpalette(palette, rawmode="RGB;15")
-        return image
+        data = self.rom.read_bytes(6400, offset=p_token + 0x80)
+        tiles = GBAGraphics.decode_8bpp_tiles(data)
+        canvas = join_blocks(tiles.reshape(10, 10, 8, 8), (10, 10))
+        return GBAGraphics.create_image(canvas, palette)
 
     def card_pile_backgrounds(self):
         mem = self.rom[YugiohROM.DUEL_FIELD_BG]
@@ -635,3 +582,46 @@ class YugiohROM:
             )
         padded = encoded + b"\x00" * (max_size - len(encoded))
         self.rom[mem_region(p_entry, max_size)] = padded
+
+    def card_filter_icons(self):
+        """
+        Returns the 6 Card Filter icons (16x16 each) as a combined image strip.
+        Layout at 0x0945C338:
+          - Top halves: tiles 0-11 (6 icons × 2 tiles wide)
+          - Bottom halves: tiles 12-23 (6 icons × 2 tiles wide)
+        Palette at 0x0945C318 (static, 16 colors).
+        """
+        base_addr = 0x0945C338
+        pal_data = self.rom.read_bytes(32, offset=0x0945C318)
+
+        data = self.rom.read_bytes(24 * 32, offset=base_addr)
+        tiles = GBAGraphics.decode_4bpp_tiles(data)
+
+        canvas = np.zeros((16, 6 * 16), dtype=np.uint8)
+
+        for i in range(6):
+            t_tl = tiles[i * 2]
+            t_tr = tiles[i * 2 + 1]
+            t_bl = tiles[12 + i * 2]
+            t_br = tiles[12 + i * 2 + 1]
+
+            x = i * 16
+            canvas[0:8, x : x + 8] = t_tl
+            canvas[0:8, x + 8 : x + 16] = t_tr
+            canvas[8:16, x : x + 8] = t_bl
+            canvas[8:16, x + 8 : x + 16] = t_br
+
+        return GBAGraphics.create_image(canvas, pal_data)
+
+    def selection_outlines(self, rank=0):
+        """Returns the 10 selection outline tiles (80x8 pixels) using rank-based palettes."""
+        addr = 0x0945D138
+        pal_addr = 0x0945D0D8 + (rank * 32)
+
+        data = self.rom.read_bytes(10 * 32, offset=addr)
+        pal_data = self.rom.read_bytes(32, offset=pal_addr)
+
+        tiles = GBAGraphics.decode_4bpp_tiles(data)
+        canvas = np.hstack(tiles)  # Simple horizontal strip
+
+        return GBAGraphics.create_image(canvas, pal_data)

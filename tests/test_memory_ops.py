@@ -398,9 +398,9 @@ class TestMemoryOperations(unittest.TestCase):
             [
                 "sprites",
                 "extract",
-                "duelist",
                 "--rom",
                 "game.gba",
+                "duelist",
                 "--output-dir",
                 "out",
             ]
@@ -458,9 +458,9 @@ class TestMemoryOperations(unittest.TestCase):
             [
                 "sprites",
                 "extract",
-                "card-pile",
                 "--rom",
                 "game.gba",
+                "card-pile",
                 "--index",
                 "3",
                 "--output-dir",
@@ -780,7 +780,9 @@ class TestCanonicalOutputPath(unittest.TestCase):
     def test_subdir_constants_are_under_sprites(self):
         self.assertEqual(str(SUBDIR_CARDS), str(Path("sprites") / "cards"))
         self.assertEqual(str(SUBDIR_DUELISTS), str(Path("sprites") / "duelists"))
-        self.assertEqual(str(SUBDIR_LOCATIONS), str(Path("sprites") / "locations"))
+        self.assertEqual(
+            str(SUBDIR_LOCATIONS), str(Path("sprites") / "locations" / "thumbs")
+        )
 
     def test_subdir_strings_and_memory_constants(self):
         self.assertEqual(str(SUBDIR_STRINGS), "strings")
@@ -851,7 +853,7 @@ class TestExtractUsesCanonicalPath(unittest.TestCase):
             ):
                 extract_location_thumbs(rom_path)
             expected_dir = os.path.join(
-                tmpdir, "game.gba.extracted", "sprites", "locations"
+                tmpdir, "game.gba.extracted", "sprites", "locations", "thumbs"
             )
             self.assertTrue(
                 os.path.exists(os.path.join(expected_dir, "location-morning-00.png"))
@@ -867,7 +869,7 @@ class TestExtractUsesCanonicalPath(unittest.TestCase):
 class TestCLIExtractCanonicalPath(unittest.TestCase):
     def test_cli_sprites_extract_card_without_output_dir(self):
         parser = build_parser()
-        args = parser.parse_args(["sprites", "extract", "card", "--rom", "game.gba"])
+        args = parser.parse_args(["sprites", "extract", "--rom", "game.gba", "card"])
         self.assertIsNone(args.output_dir)
         with patch("ygogxda.cli.extract_card_artworks") as mock:
             result = args.func(args)
@@ -876,7 +878,7 @@ class TestCLIExtractCanonicalPath(unittest.TestCase):
 
     def test_cli_sprites_extract_duelist_without_output_dir(self):
         parser = build_parser()
-        args = parser.parse_args(["sprites", "extract", "duelist", "--rom", "game.gba"])
+        args = parser.parse_args(["sprites", "extract", "--rom", "game.gba", "duelist"])
         self.assertIsNone(args.output_dir)
         with patch("ygogxda.cli.extract_duelist_sprites") as mock:
             result = args.func(args)
@@ -886,7 +888,7 @@ class TestCLIExtractCanonicalPath(unittest.TestCase):
     def test_cli_sprites_extract_location_without_output_dir(self):
         parser = build_parser()
         args = parser.parse_args(
-            ["sprites", "extract", "location-thumb", "--rom", "game.gba"]
+            ["sprites", "extract", "--rom", "game.gba", "location-thumb"]
         )
         self.assertIsNone(args.output_dir)
         with patch("ygogxda.cli.extract_location_thumbs") as mock:
@@ -897,7 +899,7 @@ class TestCLIExtractCanonicalPath(unittest.TestCase):
     def test_cli_sprites_extract_card_with_explicit_output_dir(self):
         parser = build_parser()
         args = parser.parse_args(
-            ["sprites", "extract", "card", "--rom", "game.gba", "--output-dir", "mydir"]
+            ["sprites", "extract", "--rom", "game.gba", "card", "--output-dir", "mydir"]
         )
         self.assertEqual(args.output_dir, "mydir")
         with patch("ygogxda.cli.extract_card_artworks") as mock:

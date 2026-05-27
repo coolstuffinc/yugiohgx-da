@@ -1,4 +1,5 @@
 import csv
+import struct
 import sys
 from pathlib import Path
 
@@ -32,7 +33,7 @@ LOCATION_THUMB_PALETTE_COLORS = 64
 
 SUBDIR_CARDS = Path("sprites") / "cards"
 SUBDIR_DUELISTS = Path("sprites") / "duelists"
-SUBDIR_LOCATIONS = Path("sprites") / "locations"
+SUBDIR_LOCATIONS = Path("sprites") / "locations" / "thumbs"
 SUBDIR_STRINGS = Path("strings")
 SUBDIR_MEMORY = Path("memory")
 
@@ -371,6 +372,229 @@ def patch_card_pile_background_from_files(
         rom.patch_card_pile_background(idx, layers)
 
     rom.save(output_rom)
+
+
+MONSTER_TYPE_NAMES = {
+    1: "Dragon",
+    2: "Zombie",
+    3: "Fiend",
+    4: "Pyro",
+    5: "Sea Serpent",
+    6: "Rock",
+    7: "Machine",
+    8: "Fish",
+    9: "Dinosaur",
+    10: "Insect",
+    11: "Beast",
+    12: "Beast-Warrior",
+    13: "Plant",
+    14: "Aqua",
+    15: "Warrior",
+    16: "Winged Beast",
+    17: "Fairy",
+    18: "Spellcaster",
+    19: "Thunder",
+    20: "Reptile",
+}
+
+MONSTER_TYPE_IDS = {v.lower(): k for k, v in MONSTER_TYPE_NAMES.items()}
+
+ATTRIBUTE_NAMES = {1: "LIGHT", 2: "DARK", 3: "WATER", 4: "FIRE", 5: "EARTH", 6: "WIND"}
+ATTRIBUTE_IDS = {v.lower(): k for k, v in ATTRIBUTE_NAMES.items()}
+
+CARD_CATEGORY_NAMES = {
+    0: "Normal Monster",
+    1: "Effect Monster",
+    2: "Fusion Monster",
+    3: "Ritual Monster",
+}
+CARD_CATEGORY_IDS = {v.lower().split()[0]: k for k, v in CARD_CATEGORY_NAMES.items()}
+
+SPELL_SUBTYPE_NAMES = {
+    0: "Normal Spell",
+    1: {0: "Field Spell", 1: "Equip Spell"},
+    2: {0: "Continuous Spell", 1: "Quick-Play Spell"},
+    3: "Ritual Spell",
+}
+
+TRAP_SUBTYPE_NAMES = {
+    0: {0: "Normal Trap", 1: "Counter Trap"},
+    2: "Continuous Trap",
+}
+
+
+def decode_card_stats(val):
+    """Decode a 32-bit card stats value into a human-readable dict."""
+    if val == 0:
+        return {"category": "Empty/Unused"}
+    b0_8 = val & 0x1FF
+    b9_17 = (val >> 9) & 0x1FF
+    b18_19 = (val >> 18) & 3
+    b20_24 = (val >> 20) & 0x1F
+    b25_28 = (val >> 25) & 0xF
+    b29_31 = (val >> 29) & 7
+
+    if b20_24 == 22:
+        # Spell card
+        subtype = SPELL_SUBTYPE_NAMES.get(b18_19, f"Unknown({b18_19})")
+        if isinstance(subtype, dict):
+            bit17 = (val >> 17) & 1
+            subtype = subtype.get(bit17, f"Unknown({b18_19},{bit17})")
+        return {"category": "Spell", "subtype": subtype}
+    elif b20_24 == 21:
+        # Trap card
+        subtype = TRAP_SUBTYPE_NAMES.get(b18_19, f"Unknown({b18_19})")
+        if isinstance(subtype, dict):
+            bit17 = (val >> 17) & 1
+            subtype = subtype.get(bit17, f"Unknown({b18_19},{bit17})")
+        return {"category": "Trap", "subtype": subtype}
+    else:
+        # Monster card
+        atk = b9_17 * 10
+        defense = b0_8 * 10
+        level = b25_28
+        attr = ATTRIBUTE_NAMES.get(b29_31, f"Unknown({b29_31})")
+        mtype = MONSTER_TYPE_NAMES.get(b20_24, f"Unknown({b20_24})")
+        cat = CARD_CATEGORY_NAMES.get(b18_19, f"Unknown({b18_19})")
+        return {
+            "category": "Monster",
+            "subtype": cat,
+            "type": mtype,
+            "attribute": attr,
+            "level": level,
+            "atk": atk,
+            "def": defense,
+        }
+
+
+def lookup_card(
+    rom_file,
+    ordinal=None,
+    card_id=None,
+    password=None,
+    show_text=False,
+    show_stats=False,
+):
+    rom = YugiohROM(rom_file)
+    LUT = rom.rom[YugiohROM.CARD_NUMBER_TO_ID].read_array(1201, dtype="H")
+
+    if password is not None:
+        ordinal = rom.passwords.enter(password)
+        if ordinal == 0:
+            raise ValueError(f"Invalid password: {password}")
+
+    if ordinal is not None:
+        if ordinal < 0 or ordinal >= 1201:
+            raise ValueError(f"Ordinal must be 0..1200, got {ordinal}")
+        cid = int(LUT[ordinal])
+        pwd = rom.passwords.unlock(ordinal)
+        name = rom.card_names[ordinal]
+        text = rom.card_texts[ordinal] if show_text else None
+    elif card_id is not None:
+        matches = [i for i in range(1201) if LUT[i] == card_id]
+        if not matches:
+            raise ValueError(f"No card found with card_id {card_id}")
+        ordinal = matches[0]
+        cid = card_id
+        pwd = rom.passwords.unlock(ordinal)
+        name = rom.card_names[ordinal]
+        text = rom.card_texts[ordinal] if show_text else None
+    else:
+        raise ValueError("Provide one of: --ordinal, --card-id, --password")
+
+    stats_val = rom.rom[YugiohROM.CARD_STATS].read_array(1201, dtype="I")[ordinal]
+    stats = decode_card_stats(stats_val)
+
+    return {
+        "ordinal": ordinal,
+        "card_id": cid,
+        "name": name,
+        "password": pwd,
+        "text": text,
+        "stats": stats if show_stats else None,
+    }
+
+
+def encode_card_stats(current=None, **overrides):
+    """Build a 32-bit card stats value from keyword overrides.
+
+    Accepts: category, type, attribute, level, atk, defense, subtype.
+    If *current* is given (int), it's used as a base and only specified
+    fields are changed.  Otherwise the value is built from scratch.
+    """
+    if current is not None:
+        val = current
+    else:
+        val = 0
+
+    b0_8 = val & 0x1FF
+    b9_17 = (val >> 9) & 0x1FF
+    b18_19 = (val >> 18) & 3
+    b20_24 = (val >> 20) & 0x1F
+    b25_28 = (val >> 25) & 0xF
+    b29_31 = (val >> 29) & 7
+
+    cat_str = overrides.get("category")
+    if cat_str is not None:
+        key = cat_str.lower().split()[0]
+        if b20_24 == 22 or cat_str.lower() in (
+            "normal spell",
+            "field spell",
+            "equip spell",
+            "continuous spell",
+            "quick-play spell",
+            "ritual spell",
+        ):
+            b18_19 = SPELL_SUBTYPE_NAMES.get(key)
+        else:
+            b18_19 = CARD_CATEGORY_IDS.get(key, b18_19)
+        if b18_19 is None and cat_str.isdigit():
+            b18_19 = int(cat_str) & 3
+
+    mtype_str = overrides.get("type")
+    if mtype_str is not None:
+        b20_24 = MONSTER_TYPE_IDS.get(mtype_str.lower(), b20_24)
+        if b20_24 is None or (isinstance(b20_24, str) and b20_24.isdigit()):
+            b20_24 = int(mtype_str) & 0x1F
+
+    attr_str = overrides.get("attribute")
+    if attr_str is not None:
+        b29_31 = ATTRIBUTE_IDS.get(attr_str.lower(), b29_31)
+        if b29_31 is None or (isinstance(b29_31, str) and b29_31.isdigit()):
+            b29_31 = int(attr_str) & 7
+
+    level = overrides.get("level")
+    if level is not None:
+        b25_28 = int(level) & 0xF
+
+    atk = overrides.get("atk")
+    if atk is not None:
+        b9_17 = (int(atk) // 10) & 0x1FF
+
+    defense = overrides.get("def")
+    if defense is not None:
+        b0_8 = (int(defense) // 10) & 0x1FF
+
+    return (
+        (b29_31 << 29)
+        | (b25_28 << 25)
+        | (b20_24 << 20)
+        | (b18_19 << 18)
+        | (b9_17 << 9)
+        | b0_8
+    )
+
+
+def patch_card_stats(rom_file, ordinal, output_file, **overrides):
+    """Read one card's stat entry, apply overrides, write to output ROM."""
+    memory = MemoryEmulator(rom_file)
+    base = YugiohROM.CARD_STATS.start
+    offset = base + ordinal * 4
+    current = memory.read_struct("<I", offset=offset)
+    new_val = encode_card_stats(current=int(current), **overrides)
+    memory[mem_region(offset, 4)] = struct.pack("<I", new_val)
+    memory.write(output_file)
+    return new_val
 
 
 def patch_string_table_bulk(rom_file, table_name, csv_file, output_rom):

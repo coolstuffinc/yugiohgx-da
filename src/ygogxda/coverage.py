@@ -75,7 +75,11 @@ ROM_LAYOUT = [
         "graphics",
     ),
     ROMRegion(
-        "UNKNOWN_TABLE", 0x08F243CC, 0x08F25690, "Unknown 1201 x uint32 table?", "data"
+        "CARD_STATS",
+        0x08F243CC,
+        0x08F25690,
+        "Card stats: attr|level|type|ATK|DEF bitfield (1201 x uint32)",
+        "data",
     ),
     # English strings
     ROMRegion("CARD_NAMES_EN", 0x08F25690, 0x08F2A68B, "English card names", "strings"),
@@ -110,8 +114,8 @@ ROM_LAYOUT = [
         "UNKNOWN_BIG_1",
         0x08F61183,
         0x090A0540,
-        "Unknown: likely sprites/graphics (~1276 KB)",
-        "unknown",
+        "4bpp tiled bitmaps: card shop, code entry UI, suitcase sprite (~1276 KB, 22 images)",
+        "graphics",
     ),
     ROMRegion("CARD_TOKEN_INFO", 0x090A0540, 0x090A0610, "Token card data", "data"),
     ROMRegion(
@@ -186,7 +190,18 @@ ROM_LAYOUT = [
         "strings",
     ),
     ROMRegion(
-        "UNKNOWN_AFTER_TUT", 0x0947EBA0, 0x094EDD78, "Unknown (~444 KB)", "unknown"
+        "MATRIX_DATA",
+        0x0947EBB0,
+        0x094801B0,
+        "Duel field matrix rendering data (2816 x uint16 per sector, at least 1 sector)",
+        "data",
+    ),
+    ROMRegion(
+        "UNKNOWN_AFTER_TUT",
+        0x094801B0,
+        0x094EDD78,
+        "Unknown (~442 KB, after matrix data)",
+        "unknown",
     ),
     # Shop
     ROMRegion(
@@ -197,11 +212,11 @@ ROM_LAYOUT = [
         "strings",
     ),
     ROMRegion(
-        "UNKNOWN_BIG_4",
+        "CARD_PILE_GFX",
         0x094EEF57,
         0x09772E14,
-        "Unknown: likely game sprites/graphics (~2575 KB)",
-        "unknown",
+        "Card-pile-format 4bpp graphics: 3D card rotation animation (panel + cropped variants), bg frames, UI panels (~2575 KB)",
+        "graphics",
     ),
     # Location thumbnails
     ROMRegion(
@@ -231,10 +246,38 @@ ROM_LAYOUT = [
         "CARD_TYPE_PTRS", 0x097D7BB8, 0x097D7BF7, "Card type name pointers (7)", "data"
     ),
     ROMRegion(
-        "STR_UNKNOWN_1",
+        "CARD_SPECIFIC_EFFECTS",
+        0x097DA800,
+        0x097E12B4,
+        "Card-specific effect handler table (~887 entries x 28B)",
+        "data",
+    ),
+    ROMRegion(
+        "STR_UNKNOWN_1A",
         0x097D7BF7,
+        0x097DA800,
+        "Unknown (~10 KB, before card effect table)",
+        "unknown",
+    ),
+    ROMRegion(
+        "UNKNOWN_BEFORE_ROOM_TABLE",
+        0x097E12B4,
+        0x097EDA00,
+        "Unknown (~50 KB, before room interaction table)",
+        "unknown",
+    ),
+    ROMRegion(
+        "ROOM_INTERACTION_TABLE",
+        0x097EDA00,
+        0x097EDE00,
+        "Room interaction table: header + month names + menu screen fns + handler dispatch",
+        "data",
+    ),
+    ROMRegion(
+        "UNKNOWN_AFTER_ROOM_TABLE",
+        0x097EDE00,
         0x097F0BC8,
-        "String data / unknown (~99 KB)",
+        "Unknown (~11 KB, after room interaction table)",
         "unknown",
     ),
     # Character names
