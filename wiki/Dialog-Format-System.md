@@ -1,10 +1,12 @@
 # Dialog Format System
 
-The game uses a format-string system for all dialog and UI text. Format strings contain `$` and `#` codes that are resolved at runtime by `format_text_processor` at `0x080BBEB4`.
+The game uses two different format-string systems for dialog and UI text.
 
-## Format Code Reference
+### 1. Main Format Processor (0x080BBEB4)
 
-### `$` Codes — Content Insertion
+`format_text_processor` at `0x080BBEB4` is a complex, recursive stack-based parser used for large dialog blocks. It supports nested format codes.
+
+#### `$` Codes — Content Insertion
 
 These insert dynamic content into dialog strings. Format: `$<LETTER><DIGITS>` where `<DIGITS>` count varies by code type.
 
@@ -15,20 +17,11 @@ These insert dynamic content into dialog strings. Format: `$<LETTER><DIGITS>` wh
 | `$l` | 2 | 4 | `get_rank_title` | Duelist rank/title |
 | `$y` | 1 | 3 | `get_dorm_text` | Dorm name |
 | `$s` | 2 | 4 | `load_place_name` | Place/location name (26 entries at `0x080BB66C`) |
-| `$S` | 2 | 4 | `load_area_name` | Area/scene name (switch: Duel Academy, dorms, Ocean, Volcano, Harbor) |
-| `$P` | 2 | 4 | `load_duelist_full_name` | Duelist full name (index 0 = player, 1-35 = NPCs) |
-| `$p` | 2 | 4 | `load_duelist_short_name` | Duelist short name (same index range) |
-| `$C` | 1 | 3 | (color?) | Unknown — 1-digit arg |
-| `$$` | 0 | 2 | — | Literal `$` character |
-| `$L` | 0 | 2 | — | Loads from EWRAM state |
-| `$Y` | 0 | 2 | — | Dorm text variant |
-| `$t` | 0 | 2 | — | Special handler |
+| `$S` | 2 | 4 | `load_area_name` | Area/scene name |
+| `$P` | 2 | 4 | `load_duelist_full_name` | Duelist full name |
+| `$p` | 2 | 4 | `load_duelist_short_name` | Duelist short name |
 
-### `@` Codes — Quick Selection
-
-Single-digit codes `@0` through `@7`. Used for quick selection/answer highlighting in dialogs.
-
-### `#` Codes — Inline Formatting
+#### `#` Codes — Inline Formatting
 
 Handled by `handle_hash_format_codes` at `0x080BBAC8`.
 
@@ -37,8 +30,15 @@ Handled by `handle_hash_format_codes` at `0x080BBAC8`.
 | `#r` | 2 | Newline (return) |
 | `#k` | 2 | Newline (continue) |
 | `#n` | 2 | Newline |
-| `#e` | 2 | (end/ellipsis?) |
-| `#><N>` | 3+ | Variable-width: dereferences EWRAM pointer at offset `N` |
+| `#e` | 2 | End/ellipsis |
+| `#><N>` | 3+ | EWRAM deref |
+
+### 2. Simple Format Processor (0x080C1C38)
+
+`simple_text_format_processor` at `0x080C1C38` is a linear parser used for simpler UI elements. It supports a subset of codes and can optionally wrap results in `@3...@7` formatting markers.
+
+Supports: `$l, $y, $m, $p, $s` and basic `#` newlines.
+
 
 ## Architecture
 

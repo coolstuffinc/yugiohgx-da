@@ -14,10 +14,16 @@ The table structure (offsets from base):
 | Offset | Content | Description |
 |--------|---------|-------------|
 | `+0x00` | 8 bytes | Header |
-| `+0x08` | 12 × uint32 (48 B) | Month name string pointers (January–December) |
-| `+0x38` | ~31 × uint32 (124 B) | Menu screen definition function pointers (~32 entries, some NULL) |
-| `+0xC8` | ~13 × uint32 (52 B) | Menu string config pointers + other data |
+| `+0x08` | 12 × uint32 (48 B) | Month names (`January`–`December`) from `ui_en` 101-112 |
+| `+0x38` | ~31 × uint32 | Room UI Init Handlers (e.g., `0x0809E37C`) |
+| `+0x58` | ~6 × uint32 | Room UI Cleanup / Transition Handlers |
+| `+0x70` | pointer | `render_room_menu` (0x0809EF34) |
+| `+0xB0` | pointer | `show_morning_thought` (0x0809FAB8) |
+| `+0xCC` | pointer | "Go to sleep" (ui_en string 57) |
+| `+0xD0` | pointer | "Look at tutorial" (ui_en string 56) |
+| `+0xDC` | pointer | "Use PDA" (ui_en string 55) |
 | `+0xFC` | 17+ × uint32 | Room menu handler dispatch table |
+
 
 ### Menu Configurations
 
@@ -46,9 +52,14 @@ A 5-state machine controlling room screens:
 | Address | Ghidra Label | Purpose |
 |---------|-------------|---------|
 | `0x0809EF34` | `render_room_menu` | Renders the menu overlay (window + blend effects) |
-| `0x080A7C68` | `dispatch_room_menu_handler` | Routes to handler via `ROOM_INTERACTION_TABLE + 0xFC` |
+| `0x0809F1DC` | `room_menu_input_handler` | Handles D-pad and A/B button input in room menus |
 | `0x080A09B4` | `room_screen_state_machine` | 5-state screen machine controlling flow |
-| `0x080C1C38` | `text_format_processor` | Expands format codes in UI strings (see below) |
+| `0x080BBEB4` | `format_text_processor` | Complex recursive format string expansion |
+| `0x080C1C38` | `simple_text_format_processor` | Simple linear format string expansion |
+| `0x0809E37C` | `room_ui_init` | Initializes room screen state |
+| `0x080A04B0` | `room_cleanup_for_menu` | Prepares room for menu display |
+| `0x080A0560` | `room_menu_transition_update` | Animates room menu transitions |
+
 
 ### Handler Slots
 
