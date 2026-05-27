@@ -6,7 +6,7 @@ The card effect system in Yu-Gi-Oh! GX Duel Academy uses a **multi-layer state m
 
 1. **Generic Effect Dispatch** — Two tables (execute + condition) at `0x0805034C` / `0x08050C2C` for IDs `0x62`–`0x80` (98–128). Handles standard effect types shared across all cards (draw, discard, tribute, destroy, etc.).
 
-2. **Card-Specific Effect Dispatch** — A second parallel table at `0x0805A798` (same 31 IDs), with handlers that override the generic ones for specific cards. Referenced via a **Card Data Table** at `0x097DA800` that maps each card ordinal ID to its effect handler (defaulting to `card_specific_effect_dispatcher` for cards with no special override).
+2. **Card-Specific Effect Dispatch** — A second parallel table at `0x0805A798` (same 31 IDs), with handlers that override the generic ones for specific cards. Referenced via a **Card Data Table** at `0x097DA800` that maps each card ordinal ID to its effect handler (defaulting to a no-op handler at `card_effect_handler_no_effect` `0x08061629` for cards with no special override).
 
 3. **Target List Filter Functions** — ~111 functions in range `0x0805B7D8`–`0x0805F3E0` that scan player card zones, match card types/attributes against bitfield criteria, compare card IDs against hardcoded values, and update the effect register.
 

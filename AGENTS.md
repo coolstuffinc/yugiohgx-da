@@ -69,7 +69,8 @@ src/ygogxda/
 ├── memory_map.py   # Canonical paths for strings/tables ← START HERE
 └── coverage.py     # ROM_LAYOUT: known memory regions
 
-docs/               # ← GBA technical details live here (do not duplicate)
+wiki/               # ← Canonical docs (synced to GitHub wiki)
+docs/               # ← Scratch notes only (not wiki-worthy)
 tests/              # unittest suite; synthetic ROM helpers
 dumps/              # Ad-hoc debug scripts
 ```
@@ -84,6 +85,9 @@ uv run ygogxda card lookup --card-id N           # Look up card by internal card
 uv run ygogxda card lookup --password STR        # Look up card by 8-digit password
 uv run ygogxda card lookup --ordinal N --stats   # Also show decoded card stats (ATK/DEF/level/type)
 uv run ygogxda card lookup --ordinal N --text    # Also show card effect text
+uv run ygogxda ghidra stats                     # Show function naming coverage
+uv run ygogxda ghidra lookup 0x0805A754         # Look up function by address
+uv run ygogxda ghidra sync                      # Pull latest from Ghidra server
 uv run python -m unittest tests/test_*.py -v     # Run tests
 ```
 

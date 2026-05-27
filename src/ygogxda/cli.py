@@ -11,6 +11,7 @@ class _HelpOnErrorParser(argparse.ArgumentParser):
 
 
 from .memory_map import CANONICAL_STRING_TABLES, list_memory_paths
+from .ghidra_map import GhidraFunctionMap, lookup_address, _DEFAULT_GHIDRA_URL
 from .memory_ops import (
     decode_card_stats,
     dump_region,
@@ -47,6 +48,15 @@ def _cmd_memory_paths(_args):
 
 def _cmd_memory_dump(args):
     dump_region(args.rom, args.path, args.output)
+    return 0
+
+
+def _cmd_memory_lookup(args):
+    for addr_str in args.address:
+        info = lookup_address(int(addr_str, 16))
+        print(
+            f"  {info['address']}  {info['function']:<45}  {info['region']:<20}  {info['category']:<10}  {info['description']}"
+        )
     return 0
 
 
@@ -174,6 +184,36 @@ def _cmd_card_lookup(args):
     return 0
 
 
+def _cmd_ghidra_sync(args):
+    fmap = GhidraFunctionMap()
+    url: str = getattr(args, "url", None) or _DEFAULT_GHIDRA_URL
+    try:
+        total, delta = fmap.sync(ghidra_url=url)
+    except Exception as exc:
+        print(f"error: sync failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"Synced {total} functions from Ghidra ({delta} new)")
+    return 0
+
+
+def _cmd_ghidra_stats(_args):
+    fmap = GhidraFunctionMap()
+    total, named, unnamed = fmap.stats()
+    print(f"Total functions:  {total}")
+    print(f"Named:           {named} ({named / total * 100:.1f}%)")
+    print(f"Unnamed (FUN_):  {unnamed} ({unnamed / total * 100:.1f}%)")
+    return 0
+
+
+def _cmd_ghidra_lookup(args):
+    for addr_str in args.address:
+        info = lookup_address(int(addr_str, 16))
+        print(
+            f"  {info['address']}  {info['function']:<45}  {info['region']:<20}  {info['category']:<10}  {info['description']}"
+        )
+    return 0
+
+
 def _cmd_card_patch(args):
     ordinal = args.ordinal
     kwargs = {}
@@ -229,6 +269,14 @@ def build_parser():
         help="Output dump file (default: <rom>.extracted/memory/<path>.bin)",
     )
     dump_parser.set_defaults(func=_cmd_memory_dump)
+
+    lookup_parser = memory_subparsers.add_parser(
+        "lookup", help="Look up an address: function name + coverage region"
+    )
+    lookup_parser.add_argument(
+        "address", nargs="+", help="Address(es) in hex (e.g. 0x0805A754)"
+    )
+    lookup_parser.set_defaults(func=_cmd_memory_lookup)
 
     # ── strings ───────────────────────────────────────────────────────────────
     strings_parser = subparsers.add_parser(
@@ -481,6 +529,33 @@ def build_parser():
         "--def", dest="defense", type=int, help="DEF (0-5110, actual value)"
     )
     card_patch_parser.set_defaults(func=_cmd_card_patch)
+
+    # ── ghidra ─────────────────────────────────────────────────────────────────
+    ghidra_parser = subparsers.add_parser("ghidra", help="Ghidra function map tools")
+    ghidra_subparsers = ghidra_parser.add_subparsers(
+        dest="ghidra_command", parser_class=_HelpOnErrorParser
+    )
+
+    ghidra_sync_parser = ghidra_subparsers.add_parser(
+        "sync", help="Sync function map from Ghidra MCP HTTP server"
+    )
+    ghidra_sync_parser.add_argument(
+        "--url",
+        default=None,
+        help=f"Ghidra server URL (default: {_DEFAULT_GHIDRA_URL})",
+    )
+    ghidra_sync_parser.set_defaults(func=_cmd_ghidra_sync)
+
+    ghidra_stats_parser = ghidra_subparsers.add_parser(
+        "stats", help="Show function naming stats"
+    )
+    ghidra_stats_parser.set_defaults(func=_cmd_ghidra_stats)
+
+    ghidra_lookup_parser = ghidra_subparsers.add_parser(
+        "lookup", help="Look up function name by address"
+    )
+    ghidra_lookup_parser.add_argument("address", nargs="+", help="Address(es) in hex")
+    ghidra_lookup_parser.set_defaults(func=_cmd_ghidra_lookup)
 
     return parser
 

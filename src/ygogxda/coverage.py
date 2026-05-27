@@ -190,7 +190,18 @@ ROM_LAYOUT = [
         "strings",
     ),
     ROMRegion(
-        "UNKNOWN_AFTER_TUT", 0x0947EBA0, 0x094EDD78, "Unknown (~444 KB)", "unknown"
+        "MATRIX_DATA",
+        0x0947EBB0,
+        0x094801B0,
+        "Duel field matrix rendering data (2816 x uint16 per sector, at least 1 sector)",
+        "data",
+    ),
+    ROMRegion(
+        "UNKNOWN_AFTER_TUT",
+        0x094801B0,
+        0x094EDD78,
+        "Unknown (~442 KB, after matrix data)",
+        "unknown",
     ),
     # Shop
     ROMRegion(
@@ -249,10 +260,24 @@ ROM_LAYOUT = [
         "unknown",
     ),
     ROMRegion(
-        "STR_UNKNOWN_1B",
+        "UNKNOWN_BEFORE_ROOM_TABLE",
         0x097E12B4,
+        0x097EDA00,
+        "Unknown (~50 KB, before room interaction table)",
+        "unknown",
+    ),
+    ROMRegion(
+        "ROOM_INTERACTION_TABLE",
+        0x097EDA00,
+        0x097EDE00,
+        "Room interaction table: header + month names + menu screen fns + handler dispatch",
+        "data",
+    ),
+    ROMRegion(
+        "UNKNOWN_AFTER_ROOM_TABLE",
+        0x097EDE00,
         0x097F0BC8,
-        "Unknown (~63 KB, after card effect table)",
+        "Unknown (~11 KB, after room interaction table)",
         "unknown",
     ),
     # Character names
