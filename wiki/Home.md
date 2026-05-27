@@ -9,6 +9,8 @@
 - **[Exam Database](Exam-Database)** — Exam question structure, template strings with `$XXXX`/`%N`/`^NNN` placeholders
 - **[Room Interaction System](Room-Interaction-System)** — PDA menu, room handlers, rank/title system, screen state machine
 - **[Monster Record System](Monster-Record-System)** — Summon/Set/reposition record structure and animation state machine
+- **[Rank and Dorm System](Rank-and-Dorm-System)** — Player rank evaluation logic, dorm assignment, and notification flow
+
 
 ## Reference
 - **[GBA Technical Reference](GBA-Technical-Reference)** — Hardware specs, memory map, address translation, rendering pipeline
