@@ -1,6 +1,5 @@
 import json
 import os
-import requests
 from .coverage import get_region
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
@@ -47,6 +46,8 @@ class GhidraFunctionMap:
         self.save()
 
     def sync(self, ghidra_url: str = _DEFAULT_GHIDRA_URL) -> tuple[int, int]:
+        import requests
+
         resp = requests.get(f"{ghidra_url}/list_functions", timeout=10)
         resp.raise_for_status()
         functions: list[tuple[int, str]] = []
