@@ -9,9 +9,12 @@
 - [[Exam-Database|Exam Database]]
 - [[Room-Interaction-System|Room Interaction System]]
 - [[Monster-Record-System|Monster Record System]]
+- [[Rank-and-Dorm-System|Rank and Dorm System]]
+
 
 ### Reference
 - [[GBA-Technical-Reference|GBA Technical Reference]]
 - [[Reverse-Engineering-Strategy|Reverse Engineering Strategy]]
 - [[Ghidra-Setup|Ghidra Setup]]
+- [[Dialog-Format-System|Dialog Format System]]
 
