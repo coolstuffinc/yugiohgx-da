@@ -170,3 +170,4 @@ assets/
 *.zip
 ghidra/
 *.extracted/
+dumps/
