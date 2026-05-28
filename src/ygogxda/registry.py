@@ -189,7 +189,7 @@ ASSETS = AssetRegistry()
 
 def _init_registry():
     # Registry Initialization with exact names for compatibility
-    ASSETS.reg("ROM_HEADER", 0x08000000, 0x080000C0, "GBA ROM header + BIOS", "code")
+    ASSETS.reg("ROM_HEADER", 0x08000000, 0x080000C0, "GBA ROM header", "code")
     ASSETS.reg(
         "INTERRUPT_BOOT",
         0x080000C0,
@@ -198,8 +198,16 @@ def _init_registry():
         "code",
     )
     ASSETS.reg("GAME_CODE_1", 0x08000230, 0x081EE230, "Main game logic", "code")
-    ASSETS.reg("MATRIX1", 0x081EE230, 0x085E66C0, "Matrix section 1", "data")
-    ASSETS.reg("GAME_CODE_2", 0x085E66C0, 0x08700000, "Data table (not code)", "data")
+    ASSETS.reg(
+        "MATRIX1",
+        0x081EE230,
+        0x085E66C0,
+        "Game data archive (pointer table + tables)",
+        "data",
+    )
+    ASSETS.reg(
+        "GAME_CODE_2", 0x085E66C0, 0x08700000, "Lookup tables (not code)", "data"
+    )
     ASSETS.reg("CARD_TOTAL_NUMBER", 0x087A8620, 0x087A8624, "Card count")
     ASSETS.reg(
         "CARD_NUMBER_TO_ID", 0x087A8624, 0x087A8F86, "Card number -> ordinal LUT"
@@ -243,7 +251,9 @@ def _init_registry():
     ASSETS.reg(
         "ROOM_INTERACTION_TABLE", 0x097EDA00, 0x097EDE00, "Room interaction table"
     )
-    ASSETS.reg("CARD_SPECIFIC_EFFECTS", 0x097DA800, 0x097E12B4, "Card effects")
+    ASSETS.reg(
+        "CARD_SPECIFIC_EFFECTS", 0x097DA800, 0x097E12B4, "Effect handler dispatch table"
+    )
     ASSETS.reg("ROM_END_UNKNOWN", 0x097FD89C, 0x0A000000, "ROM padding")
 
     # String Tables
