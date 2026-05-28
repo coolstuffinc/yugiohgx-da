@@ -67,6 +67,14 @@ class YugiohROM:
             )
 
     def _make_getter(self, name, meta: SpriteMetadata):
+        if name == "card-pile":
+
+            def getter(rom: "YugiohROM", index: int, variation: int = 0):
+                img = rom.card_pile_background(index)
+                return img, b""
+
+            return getter
+
         BASE = 0x08000000
 
         def getter(rom: "YugiohROM", index: int, variation: int = 0):
@@ -158,6 +166,15 @@ class YugiohROM:
         return getter
 
     def _make_setter(self, name, meta: SpriteMetadata):
+        if name == "card-pile":
+
+            def setter(
+                rom: "YugiohROM", index: int, bmp: bytes, pal: bytes, variation: int = 0
+            ):
+                pass
+
+            return setter
+
         def setter(
             rom: "YugiohROM", index: int, bmp: bytes, pal: bytes, variation: int = 0
         ):

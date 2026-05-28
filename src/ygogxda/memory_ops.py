@@ -169,6 +169,10 @@ def _sprite_filename(name, meta, index, variation):
 
 
 def extract_sprite_type(rom_file, name, output_dir=None, jobs=None):
+    if name == "card-pile":
+        extract_card_pile_layers(rom_file, output_dir=output_dir)
+        return
+
     meta = ASSETS.sprites[name]
     rom = YugiohROM(rom_file)
     if output_dir is None:

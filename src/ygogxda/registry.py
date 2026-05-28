@@ -66,6 +66,8 @@ class SpriteCollection:
 
     def get(self, rom: Any, index: int, variation: int = 0) -> Image.Image:
         bmp, pal = self.getter(rom, index, variation)
+        if isinstance(bmp, Image.Image):
+            return bmp
         return self.decode(bmp, pal)
 
     def patch(self, rom: Any, index: int, image: Image.Image, variation: int = 0):
@@ -312,6 +314,17 @@ def _init_registry():
         b_reg="CARD_PACK_BITMAPS",
         p_reg="CARD_PACK_PALETTES",
         p_stride=96,
+    )
+    ASSETS.reg_sprite(
+        "card-pile",
+        256,
+        160,
+        4,
+        16,
+        count=8,
+        is_ptr=True,
+        b_reg="CARD_PILE_BG",
+        root_table_size=8,
     )
 
 

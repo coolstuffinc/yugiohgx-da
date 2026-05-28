@@ -20,8 +20,8 @@ from .memory_ops import (
     dump_region,
     extract_sprite_resource,
     extract_sprite_type,
-    patch_sprite_resource,
     extract_card_pile_layers,
+    patch_sprite_resource,
     extract_string_table,
     lookup_card,
     patch_card_image,
@@ -90,11 +90,6 @@ def _cmd_strings_patch(args):
     return 0
 
 
-def _cmd_sprites_extract_card_pile(args):
-    extract_card_pile_layers(args.rom, index=args.index, output_dir=args.output_dir)
-    return 0
-
-
 def _cmd_sprites_extract(args):
     rom_file = args.rom
     jobs = getattr(args, "jobs", None)
@@ -102,12 +97,12 @@ def _cmd_sprites_extract(args):
         print("Extracting all sprites...")
         for name in SPRITE_RESOURCES.sprites:
             extract_sprite_type(rom_file, name, jobs=jobs)
-        extract_card_pile_layers(rom_file)
         return 0
 
     resource_name = args.sprites_resource
-    if resource_name == "card-pile":
-        return _cmd_sprites_extract_card_pile(args)
+    if args.index is not None and resource_name == "card-pile":
+        extract_card_pile_layers(rom_file, index=args.index, output_dir=args.output_dir)
+        return 0
 
     resource = SPRITE_RESOURCES.sprites[resource_name]
     if args.index is not None:
@@ -310,9 +305,6 @@ def build_parser():
         p.add_argument("--index", type=int)
         p.add_argument("--variation", type=int)
         p.add_argument("--output-dir")
-    extract_sprites_sub.add_parser("card-pile").set_defaults(
-        func=_cmd_sprites_extract_card_pile
-    )
     extract_sprites_parser.set_defaults(func=_cmd_sprites_extract)
 
     patch_sprites_parser = sprites_action_subparsers.add_parser(
@@ -322,6 +314,8 @@ def build_parser():
         dest="sprites_resource", parser_class=_HelpOnErrorParser
     )
     for name in SPRITE_RESOURCES.sprites:
+        if name == "card-pile":
+            continue
         p = patch_sprites_sub.add_parser(name)
         p.add_argument("--rom", required=True)
         p.add_argument("--index", type=int)
