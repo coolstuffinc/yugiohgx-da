@@ -1,4 +1,7 @@
+import concurrent.futures
 import csv
+import hashlib
+import json
 import struct
 import sys
 from pathlib import Path
@@ -7,15 +10,10 @@ import numpy as np
 from PIL import Image
 
 from .memory import MemoryEmulator, mem_region
-from .memory_map import (
-    CANONICAL_STRING_TABLES,
-    list_memory_paths,
-    resolve_memory_path,
-    resolve_string_table,
-)
+from .registry import ASSETS, StringTableMetadata, SpriteMetadata
 from .japanese_encoding import decode as japanese_decode, encode as japanese_encode
 from .rom import YugiohROM
-from .utils import charset_decode, rgb2gba, split_blocks
+from .utils import charset_decode, rgb2gba, split_blocks, sucessive_sub
 
 
 CARD_IMAGE_SIDE = 80
@@ -40,11 +38,6 @@ SUBDIR_PACKS = Path("sprites") / "card_packs"
 
 
 def canonical_output_path(rom_file):
-    """Return the canonical extraction directory for a ROM file.
-
-    Given ``rom_file`` (e.g. ``ygogxda.gba``), returns
-    ``ygogxda.gba.extracted/`` next to the ROM file.
-    """
     p = Path(rom_file)
     return p.with_name(p.name + ".extracted")
 
@@ -96,7 +89,6 @@ def _patch_indexed_image(bitmap_region, palette_region, pixels, palette_bytes, b
 
 
 def _decode_string_payload(payload, encoding):
-    """Decode a null-terminated string payload with compatibility fallbacks."""
     raw = payload.split(b"\x00", 1)[0]
     if encoding == "japanese_rom":
         return japanese_decode(raw)
@@ -113,10 +105,18 @@ def _decode_string_payload(payload, encoding):
 
 
 def _encode_string_payload(text, encoding):
-    """Encode text for a table-specific encoding."""
     if encoding == "japanese_rom":
         return japanese_encode(text)
     return text.encode(encoding)
+
+
+def write_hash_manifest(directory: Path):
+    hashes = {}
+    for png_file in sorted(directory.glob("*.png")):
+        hashes[png_file.name] = hashlib.sha256(png_file.read_bytes()).hexdigest()
+    (directory / "hashes.json").write_text(
+        json.dumps(hashes, indent=2, sort_keys=True) + "\n"
+    )
 
 
 def dump_region(rom_file, path, output_file=None):
@@ -124,132 +124,247 @@ def dump_region(rom_file, path, output_file=None):
         output_file = canonical_output_path(rom_file) / SUBDIR_MEMORY / f"{path}.bin"
         _ensure_output_dir(output_file.parent)
     memory = MemoryEmulator(rom_file)
-    region = resolve_memory_path(path).region
-    payload = memory[region].read_bytes(region.stop - region.start)
+    region = ASSETS.get_region(path)
+    payload = memory[region.slice].read_bytes(region.size)
     with open(output_file, "wb") as output:
         output.write(payload)
 
 
-def patch_card_image(rom_file, card_id, image_file, output_rom):
+def extract_sprite_resource(
+    rom_file, resource_name, index, variation=0, output_file=None, rom=None
+):
+    if rom is None:
+        rom = YugiohROM(rom_file)
+    image = rom.get_sprite(resource_name, index, variation)
+    if output_file is None:
+        p = canonical_output_path(rom_file) / "sprites" / resource_name
+        _ensure_output_dir(p)
+        if resource_name == "location":
+            period = LOCATION_PERIODS[variation]
+            output_file = p / f"location-{period}-{index:02d}.png"
+        elif resource_name == "duelist":
+            output_file = p / f"duelist-{index:02d}-variation-{variation}.png"
+        else:
+            output_file = p / f"{resource_name}-{index:02d}.png"
+    image.save(output_file)
+    return output_file
+
+
+def patch_sprite_resource(
+    rom_file, resource_name, index, image_file, output_rom, variation=0
+):
     rom = YugiohROM(rom_file)
-    pixels, palette = _load_indexed_image(
-        image_file,
-        (CARD_IMAGE_SIDE, CARD_IMAGE_SIDE),
-        CARD_IMAGE_PALETTE_COLORS,
-    )
-    bitmap_region = rom.card_artwork_bitmap(card_id)
-    palette_region = rom.card_artwork_palette(card_id)
-    _patch_indexed_image(
-        bitmap_region, palette_region, pixels, palette, CARD_IMAGE_BLOCKS
-    )
-    rom.patch(bitmap_region)
-    rom.patch(palette_region)
+    image = Image.open(image_file)
+    rom.patch_sprite(resource_name, index, image, variation)
     rom.save(output_rom)
 
 
-def extract_card_artworks(rom_file, output_dir=None):
+def extract_card_artworks(rom_file, output_dir=None, jobs=None):
     rom = YugiohROM(rom_file)
     if output_dir is None:
         output_dir = canonical_output_path(rom_file) / SUBDIR_CARDS
     output_path = _ensure_output_dir(output_dir)
-    for index, artwork in enumerate(rom.card_images):
-        artwork.save(output_path / f"card-{index:04d}.png")
+    total = rom.num_cards
+
+    def _do_one(idx):
+        extract_sprite_resource(
+            None,
+            "card",
+            idx,
+            output_file=output_path / f"card-{idx:04d}.png",
+            rom=rom,
+        )
+        return idx
+
+    if jobs and jobs > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+            for i, _ in enumerate(pool.map(_do_one, range(total))):
+                if (i + 1) % 100 == 0 or i == total - 1:
+                    print(f"  cards: {i + 1}/{total}", flush=True)
+    else:
+        for index in range(total):
+            _do_one(index)
+            if (index + 1) % 100 == 0 or index == total - 1:
+                print(f"  cards: {index + 1}/{total}", flush=True)
+    write_hash_manifest(output_path)
 
 
-def extract_duelist_sprites(rom_file, output_dir=None):
+def extract_duelist_sprites(rom_file, output_dir=None, jobs=None):
     rom = YugiohROM(rom_file)
     if output_dir is None:
         output_dir = canonical_output_path(rom_file) / SUBDIR_DUELISTS
     output_path = _ensure_output_dir(output_dir)
-    for duelist_index, variations in enumerate(rom.duelist_sprites()):
-        for variation_index, image in enumerate(variations):
-            image.save(
-                output_path
-                / f"duelist-{duelist_index:02d}-variation-{variation_index}.png"
+    total = 29
+    if jobs and jobs > 1:
+        tasks = [(d, v) for d in range(total) for v in range(5)]
+
+        def _do_one(args):
+            d, v = args
+            extract_sprite_resource(
+                None,
+                "duelist",
+                d,
+                v,
+                output_file=output_path / f"duelist-{d:02d}-variation-{v}.png",
+                rom=rom,
             )
+            return d
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+            prev = -1
+            for d in pool.map(_do_one, tasks):
+                if d != prev:
+                    print(f"  duelists: {d + 1}/{total}", flush=True)
+                    prev = d
+    else:
+        for duelist_index in range(total):
+            for variation_index in range(5):
+                extract_sprite_resource(
+                    None,
+                    "duelist",
+                    duelist_index,
+                    variation_index,
+                    output_file=output_path
+                    / f"duelist-{duelist_index:02d}-variation-{variation_index}.png",
+                    rom=rom,
+                )
+            print(f"  duelists: {duelist_index + 1}/29", flush=True)
+    write_hash_manifest(output_path)
 
 
-def extract_card_packs(rom_file, output_dir=None):
+def extract_card_packs(rom_file, output_dir=None, jobs=None):
     rom = YugiohROM(rom_file)
     if output_dir is None:
         output_dir = canonical_output_path(rom_file) / SUBDIR_PACKS
     output_path = _ensure_output_dir(output_dir)
-    for index, image in enumerate(rom.card_pack_sprites()):
-        image.save(output_path / f"card_pack-{index:02d}.png")
+    total = 49
+
+    def _do_one(idx):
+        extract_sprite_resource(
+            None,
+            "card-pack",
+            idx,
+            output_file=output_path / f"card_pack-{idx:02d}.png",
+            rom=rom,
+        )
+        return idx
+
+    if jobs and jobs > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+            for i, _ in enumerate(pool.map(_do_one, range(total))):
+                if (i + 1) % 10 == 0 or i == total:
+                    print(f"  card-packs: {i + 1}/{total}", flush=True)
+    else:
+        for index in range(total):
+            _do_one(index)
+            if (index + 1) % 10 == 0 or index == total - 1:
+                print(f"  card-packs: {index + 1}/49", flush=True)
+    write_hash_manifest(output_path)
 
 
-def extract_location_thumbs(rom_file, output_dir=None):
+def extract_location_thumbs(rom_file, output_dir=None, jobs=None):
     rom = YugiohROM(rom_file)
     if output_dir is None:
         output_dir = canonical_output_path(rom_file) / SUBDIR_LOCATIONS
     output_path = _ensure_output_dir(output_dir)
-    for period, images in zip(LOCATION_PERIODS, rom.location_thumbs()):
-        for location_index, image in enumerate(images):
-            image.save(output_path / f"location-{period}-{location_index:02d}.png")
+    total_variations = len(LOCATION_PERIODS)
+    if jobs and jobs > 1:
+        tasks = [
+            (index, v, period)
+            for v, period in enumerate(LOCATION_PERIODS)
+            for index in range(26)
+        ]
+
+        def _do_one(args):
+            idx, v, period = args
+            extract_sprite_resource(
+                None,
+                "location-thumb",
+                idx,
+                v,
+                output_file=output_path / f"location-{period}-{idx:02d}.png",
+                rom=rom,
+            )
+            return v
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+            prev = -1
+            for v in pool.map(_do_one, tasks):
+                if v != prev:
+                    print(
+                        f"  locations: {LOCATION_PERIODS[v]} ({v + 1}/{total_variations})",
+                        flush=True,
+                    )
+                    prev = v
+    else:
+        for variation, period in enumerate(LOCATION_PERIODS):
+            for index in range(26):
+                extract_sprite_resource(
+                    None,
+                    "location-thumb",
+                    index,
+                    variation,
+                    output_file=output_path / f"location-{period}-{index:02d}.png",
+                    rom=rom,
+                )
+            print(f"  locations: {period} ({variation + 1}/3)", flush=True)
+    write_hash_manifest(output_path)
+
+
+def patch_card_image(rom_file, card_id, image_file, output_rom):
+    patch_sprite_resource(rom_file, "card", card_id, image_file, output_rom)
 
 
 def patch_duelist_sprite(
     rom_file, duelist_index, variation_index, image_file, output_rom
 ):
-    rom = YugiohROM(rom_file)
-    pixels, palette = _load_indexed_image(
-        image_file, DUELIST_SPRITE_SIZE, DUELIST_SPRITE_PALETTE_COLORS
+    patch_sprite_resource(
+        rom_file,
+        "duelist",
+        duelist_index,
+        image_file,
+        output_rom,
+        variation=variation_index,
     )
-    bitmap_region = rom.duelist_sprite_bitmap(duelist_index, variation_index)
-    palette_region = rom.duelist_sprite_palette(duelist_index)
-    _patch_indexed_image(
-        bitmap_region, palette_region, pixels, palette, DUELIST_SPRITE_BLOCKS
-    )
-    rom.patch(bitmap_region)
-    rom.patch(palette_region)
-    rom.save(output_rom)
 
 
 def patch_location_thumb(rom_file, period, location_index, image_file, output_rom):
-    rom = YugiohROM(rom_file)
     try:
-        period_index = LOCATION_PERIODS.index(period)
-    except ValueError as exc:
-        raise ValueError(
-            f"period must be one of: {', '.join(LOCATION_PERIODS)}"
-        ) from exc
-
-    pixels, palette = _load_indexed_image(
-        image_file, LOCATION_THUMB_SIZE, LOCATION_THUMB_PALETTE_COLORS
+        variation = LOCATION_PERIODS.index(period)
+    except ValueError:
+        raise ValueError(f"period must be one of: {LOCATION_PERIODS}")
+    patch_sprite_resource(
+        rom_file,
+        "location",
+        location_index,
+        image_file,
+        output_rom,
+        variation=variation,
     )
-    bitmap_region = rom.location_thumb_bitmap(period_index, location_index)
-    palette_region = rom.location_thumb_palette(period_index, location_index)
-    _patch_indexed_image(
-        bitmap_region, palette_region, pixels, palette, LOCATION_THUMB_BLOCKS
-    )
-    rom.patch(bitmap_region)
-    rom.patch(palette_region)
-    rom.save(output_rom)
 
 
 def patch_string_entry(rom_file, table_name, index, text, output_rom):
     memory = MemoryEmulator(rom_file)
-    table = resolve_string_table(table_name)
-    strings_region = resolve_memory_path(table.strings_path).region
-    offsets_region = resolve_memory_path(table.offsets_path).region
+    meta = ASSETS.string_tables[table_name]
+    strings_reg = ASSETS.get_region(meta.strings_region)
+    offsets_reg = ASSETS.get_region(meta.offsets_region)
 
-    offsets_memory = memory[offsets_region]
-    num_offsets = len(offsets_memory) // OFFSET_SIZE
+    offsets_memory = memory[offsets_reg.slice]
+    num_offsets = offsets_reg.size // OFFSET_SIZE
     if index < 0 or index >= num_offsets - 1:
         raise IndexError(f"index must be between 0 and {num_offsets - 2}")
 
     offsets = offsets_memory.read_array(num_offsets, dtype="I")
-    start = strings_region.start + int(offsets[index])
-    stop = strings_region.start + int(offsets[index + 1])
+    start = strings_reg.start + int(offsets[index])
+    stop = strings_reg.start + int(offsets[index + 1])
     capacity = stop - start
     if capacity <= 0:
         raise ValueError(f"Invalid table offsets for index {index}")
 
-    encoded = _encode_string_payload(text, table.encoding)
+    encoded = _encode_string_payload(text, meta.encoding)
     if len(encoded) + 1 > capacity:
         raise ValueError(
-            f"Text exceeds capacity for entry {index} in {table_name} "
-            f"(maximum {capacity - 1} bytes)"
+            f"Text exceeds capacity for entry {index} (max {capacity - 1} bytes)"
         )
 
     patched = encoded + b"\x00" + b"\x00" * (capacity - len(encoded) - 1)
@@ -259,57 +374,50 @@ def patch_string_entry(rom_file, table_name, index, text, output_rom):
 
 def get_string_entry(rom_file, table_name, index):
     memory = MemoryEmulator(rom_file)
-    table = resolve_string_table(table_name)
-    strings_region = resolve_memory_path(table.strings_path).region
-    offsets_region = resolve_memory_path(table.offsets_path).region
+    meta = ASSETS.string_tables[table_name]
+    strings_reg = ASSETS.get_region(meta.strings_region)
+    offsets_reg = ASSETS.get_region(meta.offsets_region)
 
-    offsets_memory = memory[offsets_region]
-    num_offsets = len(offsets_memory) // OFFSET_SIZE
+    offsets_memory = memory[offsets_reg.slice]
+    num_offsets = offsets_reg.size // OFFSET_SIZE
     if index < 0 or index >= num_offsets - 1:
         raise IndexError(f"index must be between 0 and {num_offsets - 2}")
 
     offsets = offsets_memory.read_array(num_offsets, dtype="I")
-    start = strings_region.start + int(offsets[index])
-    stop = strings_region.start + int(offsets[index + 1])
+    start = strings_reg.start + int(offsets[index])
+    stop = strings_reg.start + int(offsets[index + 1])
     payload = memory[mem_region(start, stop - start)].read_bytes(stop - start)
-    return _decode_string_payload(payload, table.encoding)
+    return _decode_string_payload(payload, meta.encoding)
 
 
 def extract_string_table(rom_file, table_name, output_file=None, index=None):
-    """Extract string table entries to CSV.
-
-    Writes to *output_file* when provided.  When *output_file* is ``None`` and
-    *index* is also ``None``, writes to the canonical path
-    ``<rom>.extracted/strings/<table_name>.csv``.  When *output_file* is
-    ``None`` but *index* is given, writes to stdout.
-    """
     if output_file is None and index is None:
         output_file = (
             canonical_output_path(rom_file) / SUBDIR_STRINGS / f"{table_name}.csv"
         )
         _ensure_output_dir(output_file.parent)
-    memory = MemoryEmulator(rom_file)
-    table = resolve_string_table(table_name)
-    strings_region = resolve_memory_path(table.strings_path).region
-    offsets_region = resolve_memory_path(table.offsets_path).region
 
-    offsets_memory = memory[offsets_region]
-    num_offsets = len(offsets_memory) // OFFSET_SIZE
+    memory = MemoryEmulator(rom_file)
+    meta = ASSETS.string_tables[table_name]
+    strings_reg = ASSETS.get_region(meta.strings_region)
+    offsets_reg = ASSETS.get_region(meta.offsets_region)
+
+    offsets_memory = memory[offsets_reg.slice]
+    num_offsets = offsets_reg.size // OFFSET_SIZE
     num_entries = num_offsets - 1
     offsets = offsets_memory.read_array(num_offsets, dtype="I")
 
     def _read_entry(i):
-        start = strings_region.start + int(offsets[i])
-        stop = strings_region.start + int(offsets[i + 1])
+        start = strings_reg.start + int(offsets[i])
+        stop = strings_reg.start + int(offsets[i + 1])
         payload = memory[mem_region(start, stop - start)].read_bytes(stop - start)
-        return _decode_string_payload(payload, table.encoding)
+        return _decode_string_payload(payload, meta.encoding)
 
-    if index is not None:
-        if index < 0 or index >= num_entries:
-            raise IndexError(f"index must be between 0 and {num_entries - 1}")
-        rows = [(index, _read_entry(index))]
-    else:
-        rows = [(i, _read_entry(i)) for i in range(num_entries)]
+    rows = (
+        [(index, _read_entry(index))]
+        if index is not None
+        else [(i, _read_entry(i)) for i in range(num_entries)]
+    )
 
     if output_file is None:
         writer = csv.writer(sys.stdout)
@@ -320,6 +428,52 @@ def extract_string_table(rom_file, table_name, output_file=None, index=None):
             writer = csv.writer(f)
             writer.writerow(["index", "text"])
             writer.writerows(rows)
+
+
+def patch_string_table_bulk(rom_file, table_name, csv_file, output_rom):
+    memory = MemoryEmulator(rom_file)
+    meta = ASSETS.string_tables[table_name]
+    strings_reg = ASSETS.get_region(meta.strings_region)
+    offsets_reg = ASSETS.get_region(meta.offsets_region)
+
+    offsets_memory = memory[offsets_reg.slice]
+    num_offsets = offsets_reg.size // OFFSET_SIZE
+    num_entries = num_offsets - 1
+    offsets = offsets_memory.read_array(num_offsets, dtype="I")
+
+    entries = []
+    for i in range(num_entries):
+        start = strings_reg.start + int(offsets[i])
+        stop = strings_reg.start + int(offsets[i + 1])
+        payload = memory[mem_region(start, stop - start)].read_bytes(stop - start)
+        entries.append(payload.split(b"\x00", 1)[0])
+
+    with open(csv_file, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            idx = int(row["index"])
+            entries[idx] = _encode_string_payload(row["text"], meta.encoding)
+
+    encoded = [e + b"\x00" for e in entries]
+    new_total = sum(len(e) for e in encoded)
+    if new_total > strings_reg.size:
+        raise ValueError(
+            f"Rebuilt table ({new_total} bytes) exceeds capacity ({strings_reg.size} bytes)"
+        )
+
+    new_offsets = []
+    pos = 0
+    for e in encoded:
+        new_offsets.append(pos)
+        pos += len(e)
+    new_offsets.append(pos)
+
+    memory[strings_reg.slice] = b"".join(encoded) + b"\x00" * (
+        strings_reg.size - new_total
+    )
+    offset_bytes = np.asarray(new_offsets, dtype="<u4").tobytes()
+    memory[offsets_reg.slice] = offset_bytes.ljust(offsets_reg.size, b"\x00")
+    memory.write(output_rom)
 
 
 CARD_PILE_CANONICAL_SUBDIR = Path("sprites") / "card_piles"
@@ -335,21 +489,21 @@ def extract_card_pile_layers(rom_file, index=None, output_dir=None):
     for idx in indices:
         composite = rom.card_pile_background(idx)
         composite.save(output_path / f"card_pile_{idx}_composite.png")
-
         layers, pal_n, pal_payload = rom.card_pile_background_layers(idx)
         for bank, arr in layers.items():
             pal = bytearray()
             for j in range(16):
                 bank_idx = bank * 16 + j
-                if bank_idx < pal_n:
-                    v = pal_payload[bank_idx * 2] | (pal_payload[bank_idx * 2 + 1] << 8)
-                else:
-                    v = 0x7C1F
+                v = (
+                    (pal_payload[bank_idx * 2] | (pal_payload[bank_idx * 2 + 1] << 8))
+                    if bank_idx < pal_n
+                    else 0x7C1F
+                )
                 pal.extend([v & 0xFF, (v >> 8) & 0xFF])
             img = Image.fromarray(arr)
             img.putpalette(pal, rawmode="RGB;15")
             img.save(output_path / f"card_pile_{idx}_bank{bank}.png")
-
+    write_hash_manifest(output_path)
     return output_path
 
 
@@ -360,7 +514,6 @@ def patch_card_pile_background_from_files(
         layers_dir = canonical_output_path(rom_file) / CARD_PILE_CANONICAL_SUBDIR
     layers_path = Path(layers_dir)
     rom = YugiohROM(rom_file)
-
     indices = range(8) if index is None else [index]
     for idx in indices:
         _, pal_n, pal_payload = rom.card_pile_background_layers(idx)
@@ -376,11 +529,8 @@ def patch_card_pile_background_from_files(
                     )
                 layers[bank] = arr
         if not layers:
-            raise FileNotFoundError(
-                f"No layer PNGs found for card_pile_{idx} in {layers_dir}"
-            )
+            raise FileNotFoundError(f"No layers for card_pile_{idx} in {layers_dir}")
         rom.patch_card_pile_background(idx, layers)
-
     rom.save(output_rom)
 
 
@@ -406,12 +556,9 @@ MONSTER_TYPE_NAMES = {
     19: "Thunder",
     20: "Reptile",
 }
-
 MONSTER_TYPE_IDS = {v.lower(): k for k, v in MONSTER_TYPE_NAMES.items()}
-
 ATTRIBUTE_NAMES = {1: "LIGHT", 2: "DARK", 3: "WATER", 4: "FIRE", 5: "EARTH", 6: "WIND"}
 ATTRIBUTE_IDS = {v.lower(): k for k, v in ATTRIBUTE_NAMES.items()}
-
 CARD_CATEGORY_NAMES = {
     0: "Normal Monster",
     1: "Effect Monster",
@@ -419,62 +566,45 @@ CARD_CATEGORY_NAMES = {
     3: "Ritual Monster",
 }
 CARD_CATEGORY_IDS = {v.lower().split()[0]: k for k, v in CARD_CATEGORY_NAMES.items()}
-
 SPELL_SUBTYPE_NAMES = {
     0: "Normal Spell",
     1: {0: "Field Spell", 1: "Equip Spell"},
     2: {0: "Continuous Spell", 1: "Quick-Play Spell"},
     3: "Ritual Spell",
 }
-
-TRAP_SUBTYPE_NAMES = {
-    0: {0: "Normal Trap", 1: "Counter Trap"},
-    2: "Continuous Trap",
-}
+TRAP_SUBTYPE_NAMES = {0: {0: "Normal Trap", 1: "Counter Trap"}, 2: "Continuous Trap"}
 
 
 def decode_card_stats(val):
-    """Decode a 32-bit card stats value into a human-readable dict."""
     if val == 0:
         return {"category": "Empty/Unused"}
-    b0_8 = val & 0x1FF
-    b9_17 = (val >> 9) & 0x1FF
-    b18_19 = (val >> 18) & 3
-    b20_24 = (val >> 20) & 0x1F
-    b25_28 = (val >> 25) & 0xF
-    b29_31 = (val >> 29) & 7
-
+    b0_8, b9_17, b18_19, b20_24, b25_28, b29_31 = (
+        val & 0x1FF,
+        (val >> 9) & 0x1FF,
+        (val >> 18) & 3,
+        (val >> 20) & 0x1F,
+        (val >> 25) & 0xF,
+        (val >> 29) & 7,
+    )
     if b20_24 == 22:
-        # Spell card
-        subtype = SPELL_SUBTYPE_NAMES.get(b18_19, f"Unknown({b18_19})")
-        if isinstance(subtype, dict):
-            bit17 = (val >> 17) & 1
-            subtype = subtype.get(bit17, f"Unknown({b18_19},{bit17})")
-        return {"category": "Spell", "subtype": subtype}
+        st = SPELL_SUBTYPE_NAMES.get(b18_19, f"Unknown({b18_19})")
+        if isinstance(st, dict):
+            st = st.get((val >> 17) & 1, f"Unknown({b18_19},{(val >> 17) & 1})")
+        return {"category": "Spell", "subtype": st}
     elif b20_24 == 21:
-        # Trap card
-        subtype = TRAP_SUBTYPE_NAMES.get(b18_19, f"Unknown({b18_19})")
-        if isinstance(subtype, dict):
-            bit17 = (val >> 17) & 1
-            subtype = subtype.get(bit17, f"Unknown({b18_19},{bit17})")
-        return {"category": "Trap", "subtype": subtype}
-    else:
-        # Monster card
-        atk = b9_17 * 10
-        defense = b0_8 * 10
-        level = b25_28
-        attr = ATTRIBUTE_NAMES.get(b29_31, f"Unknown({b29_31})")
-        mtype = MONSTER_TYPE_NAMES.get(b20_24, f"Unknown({b20_24})")
-        cat = CARD_CATEGORY_NAMES.get(b18_19, f"Unknown({b18_19})")
-        return {
-            "category": "Monster",
-            "subtype": cat,
-            "type": mtype,
-            "attribute": attr,
-            "level": level,
-            "atk": atk,
-            "def": defense,
-        }
+        st = TRAP_SUBTYPE_NAMES.get(b18_19, f"Unknown({b18_19})")
+        if isinstance(st, dict):
+            st = st.get((val >> 17) & 1, f"Unknown({b18_19},{(val >> 17) & 1})")
+        return {"category": "Trap", "subtype": st}
+    return {
+        "category": "Monster",
+        "subtype": CARD_CATEGORY_NAMES.get(b18_19, f"Unknown({b18_19})"),
+        "type": MONSTER_TYPE_NAMES.get(b20_24, f"Unknown({b20_24})"),
+        "attribute": ATTRIBUTE_NAMES.get(b29_31, f"Unknown({b29_31})"),
+        "level": b25_28,
+        "atk": b9_17 * 10,
+        "def": b0_8 * 10,
+    }
 
 
 def lookup_card(
@@ -486,68 +616,58 @@ def lookup_card(
     show_stats=False,
 ):
     rom = YugiohROM(rom_file)
-    LUT = rom.rom[YugiohROM.CARD_NUMBER_TO_ID].read_array(1201, dtype="H")
-
+    LUT = rom.rom[rom.CARD_NUMBER_TO_ID].read_array(1201, dtype="H")
     if password is not None:
         ordinal = rom.passwords.enter(password)
         if ordinal == 0:
             raise ValueError(f"Invalid password: {password}")
-
     if ordinal is not None:
         if ordinal < 0 or ordinal >= 1201:
-            raise ValueError(f"Ordinal must be 0..1200, got {ordinal}")
-        cid = int(LUT[ordinal])
-        pwd = rom.passwords.unlock(ordinal)
-        name = rom.card_names[ordinal]
+            raise ValueError(f"Ordinal out of range: {ordinal}")
+        cid, pwd, name = (
+            int(LUT[ordinal]),
+            rom.passwords.unlock(ordinal),
+            rom.card_names[ordinal],
+        )
         text = rom.card_texts[ordinal] if show_text else None
     elif card_id is not None:
         matches = [i for i in range(1201) if LUT[i] == card_id]
         if not matches:
             raise ValueError(f"No card found with card_id {card_id}")
         ordinal = matches[0]
-        cid = card_id
-        pwd = rom.passwords.unlock(ordinal)
-        name = rom.card_names[ordinal]
+        cid, pwd, name = card_id, rom.passwords.unlock(ordinal), rom.card_names[ordinal]
         text = rom.card_texts[ordinal] if show_text else None
     else:
         raise ValueError("Provide one of: --ordinal, --card-id, --password")
-
-    stats_val = rom.rom[YugiohROM.CARD_STATS].read_array(1201, dtype="I")[ordinal]
-    stats = decode_card_stats(stats_val)
-
+    stats = (
+        decode_card_stats(rom.rom[rom.CARD_STATS].read_array(1201, dtype="I")[ordinal])
+        if show_stats
+        else None
+    )
     return {
         "ordinal": ordinal,
         "card_id": cid,
         "name": name,
         "password": pwd,
         "text": text,
-        "stats": stats if show_stats else None,
+        "stats": stats,
     }
 
 
 def encode_card_stats(current=None, **overrides):
-    """Build a 32-bit card stats value from keyword overrides.
-
-    Accepts: category, type, attribute, level, atk, defense, subtype.
-    If *current* is given (int), it's used as a base and only specified
-    fields are changed.  Otherwise the value is built from scratch.
-    """
-    if current is not None:
-        val = current
-    else:
-        val = 0
-
-    b0_8 = val & 0x1FF
-    b9_17 = (val >> 9) & 0x1FF
-    b18_19 = (val >> 18) & 3
-    b20_24 = (val >> 20) & 0x1F
-    b25_28 = (val >> 25) & 0xF
-    b29_31 = (val >> 29) & 7
-
-    cat_str = overrides.get("category")
-    if cat_str is not None:
-        key = cat_str.lower().split()[0]
-        if b20_24 == 22 or cat_str.lower() in (
+    val = current if current is not None else 0
+    b0_8, b9_17, b18_19, b20_24, b25_28, b29_31 = (
+        val & 0x1FF,
+        (val >> 9) & 0x1FF,
+        (val >> 18) & 3,
+        (val >> 20) & 0x1F,
+        (val >> 25) & 0xF,
+        (val >> 29) & 7,
+    )
+    c = overrides.get("category")
+    if c:
+        k = c.lower().split()[0]
+        if b20_24 == 22 or c.lower() in (
             "normal spell",
             "field spell",
             "equip spell",
@@ -555,36 +675,19 @@ def encode_card_stats(current=None, **overrides):
             "quick-play spell",
             "ritual spell",
         ):
-            b18_19 = SPELL_SUBTYPE_NAMES.get(key)
+            b18_19 = SPELL_SUBTYPE_NAMES.get(k, b18_19)
         else:
-            b18_19 = CARD_CATEGORY_IDS.get(key, b18_19)
-        if b18_19 is None and cat_str.isdigit():
-            b18_19 = int(cat_str) & 3
-
-    mtype_str = overrides.get("type")
-    if mtype_str is not None:
-        b20_24 = MONSTER_TYPE_IDS.get(mtype_str.lower(), b20_24)
-        if b20_24 is None or (isinstance(b20_24, str) and b20_24.isdigit()):
-            b20_24 = int(mtype_str) & 0x1F
-
-    attr_str = overrides.get("attribute")
-    if attr_str is not None:
-        b29_31 = ATTRIBUTE_IDS.get(attr_str.lower(), b29_31)
-        if b29_31 is None or (isinstance(b29_31, str) and b29_31.isdigit()):
-            b29_31 = int(attr_str) & 7
-
-    level = overrides.get("level")
-    if level is not None:
-        b25_28 = int(level) & 0xF
-
-    atk = overrides.get("atk")
-    if atk is not None:
-        b9_17 = (int(atk) // 10) & 0x1FF
-
-    defense = overrides.get("def")
-    if defense is not None:
-        b0_8 = (int(defense) // 10) & 0x1FF
-
+            b18_19 = CARD_CATEGORY_IDS.get(k, b18_19)
+    if "type" in overrides:
+        b20_24 = MONSTER_TYPE_IDS.get(overrides["type"].lower(), b20_24)
+    if "attribute" in overrides:
+        b29_31 = ATTRIBUTE_IDS.get(overrides["attribute"].lower(), b29_31)
+    if "level" in overrides:
+        b25_28 = int(overrides["level"]) & 0xF
+    if "atk" in overrides:
+        b9_17 = (int(overrides["atk"]) // 10) & 0x1FF
+    if "def" in overrides:
+        b0_8 = (int(overrides["def"]) // 10) & 0x1FF
     return (
         (b29_31 << 29)
         | (b25_28 << 25)
@@ -596,73 +699,10 @@ def encode_card_stats(current=None, **overrides):
 
 
 def patch_card_stats(rom_file, ordinal, output_file, **overrides):
-    """Read one card's stat entry, apply overrides, write to output ROM."""
-    memory = MemoryEmulator(rom_file)
-    base = YugiohROM.CARD_STATS.start
-    offset = base + ordinal * 4
-    current = memory.read_struct("<I", offset=offset)
+    rom = YugiohROM(rom_file)
+    offset = rom.CARD_STATS.start + ordinal * 4
+    current = rom.rom.read_struct("<I", offset=offset)
     new_val = encode_card_stats(current=int(current), **overrides)
-    memory[mem_region(offset, 4)] = struct.pack("<I", new_val)
-    memory.write(output_file)
+    rom.rom[mem_region(offset, 4)] = struct.pack("<I", new_val)
+    rom.save(output_file)
     return new_val
-
-
-def patch_string_table_bulk(rom_file, table_name, csv_file, output_rom):
-    """Patch multiple string table entries from a CSV, rebuilding the offset table.
-
-    The CSV must have *index* and *text* columns.  Only listed entries are
-    modified; all others keep their current values.  Offsets are regenerated
-    from scratch so entries may borrow space from each other as long as the
-    total encoded size (including null terminators) fits inside the original
-    string region.
-    """
-    memory = MemoryEmulator(rom_file)
-    table = resolve_string_table(table_name)
-    strings_path_obj = resolve_memory_path(table.strings_path)
-    strings_region = strings_path_obj.region
-    offsets_region = resolve_memory_path(table.offsets_path).region
-    region_capacity = strings_path_obj.size
-
-    offsets_memory = memory[offsets_region]
-    num_offsets = len(offsets_memory) // OFFSET_SIZE
-    num_entries = num_offsets - 1
-    offsets = offsets_memory.read_array(num_offsets, dtype="I")
-
-    # Read all current entries
-    entries = []
-    for i in range(num_entries):
-        start = strings_region.start + int(offsets[i])
-        stop = strings_region.start + int(offsets[i + 1])
-        payload = memory[mem_region(start, stop - start)].read_bytes(stop - start)
-        entries.append(payload.split(b"\x00", 1)[0])
-
-    # Apply CSV overrides
-    with open(csv_file, "r", newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            idx = int(row["index"])
-            if idx < 0 or idx >= num_entries:
-                raise IndexError(f"CSV index {idx} out of range 0..{num_entries - 1}")
-            entries[idx] = _encode_string_payload(row["text"], table.encoding)
-
-    # Encode all entries (null-terminated)
-    encoded = [entry + b"\x00" for entry in entries]
-    new_total = sum(len(e) for e in encoded)
-    if new_total > region_capacity:
-        raise ValueError(
-            f"Rebuilt string table ({new_total} bytes) exceeds region capacity ({region_capacity} bytes)"
-        )
-
-    # Rebuild offsets
-    new_offsets = []
-    pos = 0
-    for e in encoded:
-        new_offsets.append(pos)
-        pos += len(e)
-    new_offsets.append(pos)  # sentinel
-
-    # Write blob padded to original region size, then the new offset table
-    blob = b"".join(encoded) + b"\x00" * (region_capacity - new_total)
-    memory[strings_region] = blob
-    memory[offsets_region] = np.asarray(new_offsets, dtype="<u4").tobytes()
-    memory.write(output_rom)

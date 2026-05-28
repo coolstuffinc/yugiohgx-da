@@ -11,6 +11,7 @@
 - **[Monster Record System](Monster-Record-System)** — Summon/Set/reposition record structure and animation state machine
 - **[Rank and Dorm System](Rank-and-Dorm-System)** — Player rank evaluation logic, dorm assignment, and notification flow
 - **[Duel Field Rendering](Duel-Field-Rendering)** — Matrix-based background rendering system
+- **[Card Pack System](Card-Pack-System)** — Shop pack covers, names, descriptions, and layouts
 
 
 ## Reference
