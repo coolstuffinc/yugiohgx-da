@@ -199,7 +199,7 @@ def _init_registry():
     )
     ASSETS.reg("GAME_CODE_1", 0x08000230, 0x081EE230, "Main game logic", "code")
     ASSETS.reg("MATRIX1", 0x081EE230, 0x085E66C0, "Matrix section 1", "data")
-    ASSETS.reg("GAME_CODE_2", 0x085E66C0, 0x08700000, "Game logic continued", "code")
+    ASSETS.reg("GAME_CODE_2", 0x085E66C0, 0x08700000, "Data table (not code)", "data")
     ASSETS.reg("CARD_TOTAL_NUMBER", 0x087A8620, 0x087A8624, "Card count")
     ASSETS.reg(
         "CARD_NUMBER_TO_ID", 0x087A8624, 0x087A8F86, "Card number -> ordinal LUT"
