@@ -102,13 +102,14 @@ class TestMemoryOperations(unittest.TestCase):
 
     def test_cli_build_parser_supports_sprite_commands(self):
         parser = build_parser()
-        # Test extract duelist
-        with patch("ygogxda.cli.extract_duelist_sprites") as mock:
+        with patch("ygogxda.cli.extract_sprite_type") as mock:
             args = parser.parse_args(
                 ["sprites", "extract", "--rom", "game.gba", "duelist"]
             )
             args.func(args)
-            mock.assert_called_once_with("game.gba", None, jobs=None)
+            mock.assert_called_once_with(
+                "game.gba", "duelist", output_dir=None, jobs=None
+            )
 
     def test_cli_build_parser_supports_card_patch_commands(self):
         parser = build_parser()
@@ -202,21 +203,23 @@ class TestExtractUsesCanonicalPath(unittest.TestCase):
 class TestCLIExtractCanonicalPath(unittest.TestCase):
     def test_cli_sprites_extract_card_without_output_dir(self):
         parser = build_parser()
-        with patch("ygogxda.cli.extract_card_artworks") as mock:
+        with patch("ygogxda.cli.extract_sprite_type") as mock:
             args = parser.parse_args(
                 ["sprites", "extract", "--rom", "game.gba", "card"]
             )
             args.func(args)
-            mock.assert_called_once_with("game.gba", None, jobs=None)
+            mock.assert_called_once_with("game.gba", "card", output_dir=None, jobs=None)
 
     def test_cli_sprites_extract_duelist_without_output_dir(self):
         parser = build_parser()
-        with patch("ygogxda.cli.extract_duelist_sprites") as mock:
+        with patch("ygogxda.cli.extract_sprite_type") as mock:
             args = parser.parse_args(
                 ["sprites", "extract", "--rom", "game.gba", "duelist"]
             )
             args.func(args)
-            mock.assert_called_once_with("game.gba", None, jobs=None)
+            mock.assert_called_once_with(
+                "game.gba", "duelist", output_dir=None, jobs=None
+            )
 
 
 class TestDumpRegionCanonicalPath(unittest.TestCase):

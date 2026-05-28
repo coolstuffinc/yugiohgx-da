@@ -1,4 +1,5 @@
 import argparse
+import concurrent.futures
 import sys
 from pathlib import Path
 
@@ -18,11 +19,8 @@ from .memory_ops import (
     decode_card_stats,
     dump_region,
     extract_sprite_resource,
+    extract_sprite_type,
     patch_sprite_resource,
-    extract_card_artworks,
-    extract_duelist_sprites,
-    extract_card_packs,
-    extract_location_thumbs,
     extract_card_pile_layers,
     extract_string_table,
     lookup_card,
@@ -66,8 +64,14 @@ def _cmd_strings_extract(args):
         print("error: --index requires --table", file=sys.stderr)
         return 1
     if args.table is None:
-        for name in sorted(CANONICAL_STRING_TABLES.keys()):
-            extract_string_table(args.rom, name)
+        tables = sorted(CANONICAL_STRING_TABLES.keys())
+        jobs = getattr(args, "jobs", None)
+        if jobs and jobs > 1:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+                pool.map(lambda t: extract_string_table(args.rom, t), tables)
+        else:
+            for name in tables:
+                extract_string_table(args.rom, name)
     else:
         extract_string_table(
             args.rom, args.table, output_file=args.output, index=args.index
@@ -86,21 +90,6 @@ def _cmd_strings_patch(args):
     return 0
 
 
-def _cmd_sprites_extract_cards(args):
-    extract_card_artworks(args.rom, args.output_dir, jobs=getattr(args, "jobs", None))
-    return 0
-
-
-def _cmd_sprites_extract_duelists(args):
-    extract_duelist_sprites(args.rom, args.output_dir, jobs=getattr(args, "jobs", None))
-    return 0
-
-
-def _cmd_sprites_extract_locations(args):
-    extract_location_thumbs(args.rom, args.output_dir, jobs=getattr(args, "jobs", None))
-    return 0
-
-
 def _cmd_sprites_extract_card_pile(args):
     extract_card_pile_layers(args.rom, index=args.index, output_dir=args.output_dir)
     return 0
@@ -111,14 +100,15 @@ def _cmd_sprites_extract(args):
     jobs = getattr(args, "jobs", None)
     if args.all:
         print("Extracting all sprites...")
-        extract_card_artworks(rom_file, jobs=jobs)
-        extract_card_packs(rom_file, jobs=jobs)
-        extract_duelist_sprites(rom_file, jobs=jobs)
-        extract_location_thumbs(rom_file, jobs=jobs)
+        for name in SPRITE_RESOURCES.sprites:
+            extract_sprite_type(rom_file, name, jobs=jobs)
         extract_card_pile_layers(rom_file)
         return 0
 
     resource_name = args.sprites_resource
+    if resource_name == "card-pile":
+        return _cmd_sprites_extract_card_pile(args)
+
     resource = SPRITE_RESOURCES.sprites[resource_name]
     if args.index is not None:
         vars_to_extract = (
@@ -133,15 +123,9 @@ def _cmd_sprites_extract(args):
             print(f"Extracted to {out}")
     else:
         print(f"Extracting all {resource_name} sprites...")
-        # Map to specific commands for backward compatibility in CLI logic
-        if resource_name == "card":
-            _cmd_sprites_extract_cards(args)
-        elif resource_name == "card-pack":
-            extract_card_packs(rom_file, jobs=jobs)
-        elif resource_name == "duelist":
-            _cmd_sprites_extract_duelists(args)
-        elif resource_name == "location-thumb":
-            _cmd_sprites_extract_locations(args)
+        extract_sprite_type(
+            rom_file, resource_name, output_dir=args.output_dir, jobs=jobs
+        )
     return 0
 
 
@@ -286,6 +270,9 @@ def build_parser():
     )
     extract_parser.add_argument("--index", type=int)
     extract_parser.add_argument("--output")
+    extract_parser.add_argument(
+        "--jobs", type=int, default=None, help="Parallel workers (default: sequential)"
+    )
     extract_parser.set_defaults(func=_cmd_strings_extract)
     patch_parser = strings_subparsers.add_parser("patch", help="Patch string table")
     patch_parser.add_argument("--rom", required=True)

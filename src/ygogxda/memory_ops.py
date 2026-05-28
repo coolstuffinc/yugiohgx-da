@@ -159,6 +159,49 @@ def patch_sprite_resource(
     rom.save(output_rom)
 
 
+def _sprite_filename(name, meta, index, variation):
+    if meta.variations > 1:
+        if name in ("location-thumb",):
+            period = LOCATION_PERIODS[variation]
+            return f"location-{period}-{index:02d}.png"
+        return f"{name}-{index:04d}-v{variation}.png"
+    return f"{name}-{index:04d}.png"
+
+
+def extract_sprite_type(rom_file, name, output_dir=None, jobs=None):
+    meta = ASSETS.sprites[name]
+    rom = YugiohROM(rom_file)
+    if output_dir is None:
+        output_dir = canonical_output_path(rom_file) / "sprites" / name
+    output_path = _ensure_output_dir(output_dir)
+    total = meta.count
+    tasks = [(i, v) for i in range(total) for v in range(meta.variations)]
+
+    def _do_one(args):
+        idx, v = args
+        extract_sprite_resource(
+            None,
+            name,
+            idx,
+            v,
+            output_file=output_path / _sprite_filename(name, meta, idx, v),
+            rom=rom,
+        )
+
+    if jobs and jobs > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+            for i, _ in enumerate(pool.map(_do_one, tasks)):
+                if (i + 1) % max(1, len(tasks) // 10) == 0 or i == len(tasks) - 1:
+                    print(f"  {name}: {i + 1}/{len(tasks)}", flush=True)
+    else:
+        for i, (idx, v) in enumerate(tasks):
+            _do_one((idx, v))
+            if (i + 1) % max(1, len(tasks) // 10) == 0 or i == len(tasks) - 1:
+                print(f"  {name}: {i + 1}/{len(tasks)}", flush=True)
+
+    write_hash_manifest(output_path)
+
+
 def extract_card_artworks(rom_file, output_dir=None, jobs=None):
     rom = YugiohROM(rom_file)
     if output_dir is None:
