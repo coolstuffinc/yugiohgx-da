@@ -4,6 +4,7 @@
 - [[Card-Data-Structure|Card Data Structure]]
 - [[Card-Effect-System|Card Effect System]]
 - [[Card-Pile-Format|Card Pile Format]]
+- [[Passwords|Password System]]
 
 ### Game Systems
 - [[Exam-Database|Exam Database]]
