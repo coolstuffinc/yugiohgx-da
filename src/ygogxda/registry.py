@@ -202,8 +202,8 @@ def _init_registry():
         "MATRIX1",
         0x081EE230,
         0x085E66C0,
-        "Game data archive (pointer table + tables)",
-        "data",
+        "Sound/music data archive (wave samples, instruments, sequences)",
+        "sound",
     )
     ASSETS.reg(
         "GAME_CODE_2", 0x085E66C0, 0x08700000, "Lookup tables (not code)", "data"

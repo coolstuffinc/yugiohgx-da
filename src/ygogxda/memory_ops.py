@@ -35,6 +35,7 @@ SUBDIR_LOCATIONS = Path("sprites") / "locations" / "thumbs"
 SUBDIR_STRINGS = Path("strings")
 SUBDIR_MEMORY = Path("memory")
 SUBDIR_PACKS = Path("sprites") / "card_packs"
+SUBDIR_SOUND = Path("sound")
 
 
 def canonical_output_path(rom_file):

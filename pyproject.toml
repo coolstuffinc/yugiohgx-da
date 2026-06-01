@@ -9,6 +9,7 @@ description = "Utilities for Yu-Gi-Oh! GX Duel Academy ROM memory mapping and pa
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "midiutil>=1.2.1",
   "numpy",
   "pillow",
   "requests>=2,<3",

@@ -14,7 +14,9 @@ class _HelpOnErrorParser(argparse.ArgumentParser):
 
 from .memory_map import CANONICAL_STRING_TABLES, list_memory_paths
 from .registry import ASSETS as SPRITE_RESOURCES
+from .coverage import coverage_summary, print_map
 from .ghidra_map import GhidraFunctionMap, lookup_address, _DEFAULT_GHIDRA_URL
+from .sound import SoundArchive
 from .memory_ops import (
     decode_card_stats,
     dump_region,
@@ -35,6 +37,8 @@ from .memory_ops import (
     SUBDIR_LOCATIONS,
     SUBDIR_STRINGS,
     SUBDIR_MEMORY,
+    SUBDIR_PACKS,
+    SUBDIR_SOUND,
     LOCATION_PERIODS,
 )
 
@@ -217,6 +221,109 @@ def _cmd_ghidra_stats(_args):
     return 0
 
 
+def _cmd_coverage_summary(_args):
+    coverage_summary()
+    return 0
+
+
+def _cmd_coverage_map(_args):
+    print_map()
+    return 0
+
+
+def _cmd_sound_info(args):
+    archive = SoundArchive(args.rom)
+    print(archive.info())
+    return 0
+
+
+def _cmd_sound_extract_blocks(args):
+    archive = SoundArchive(args.rom)
+    base = canonical_output_path(args.rom) / SUBDIR_SOUND
+    out = args.output or str(base / "blocks")
+    path = archive.extract_blocks(out)
+    print(f"Extracted {archive.num_entries} blocks to {path}/")
+    return 0
+
+
+def _cmd_sound_export_instruments(args):
+    archive = SoundArchive(args.rom)
+    sr = args.sample_rate or 16000
+    base = canonical_output_path(args.rom) / SUBDIR_SOUND
+    if args.index is not None:
+        out = args.output or str(
+            base / "instruments" / f"instrument_{args.index:03d}.wav"
+        )
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        path = archive.export_instrument(args.index, out, sr)
+        print(f"Exported block {args.index} -> {path}")
+    else:
+        out_dir = args.output or str(base / "instruments")
+        exported = archive.export_all_instruments(out_dir, sr)
+        print(f"Exported {len(exported)} instruments to {out_dir}/")
+        for p in exported:
+            print(f"  {p}")
+    return 0
+
+
+def _cmd_sound_to_midi(args):
+    from .sound import song_to_midi
+
+    archive = SoundArchive(args.rom)
+    base = canonical_output_path(args.rom) / SUBDIR_SOUND
+    for idx in args.index:
+        data = archive.get_entry_data(idx)
+        mid = song_to_midi(data)
+        if mid is None:
+            print(f"error: midiutil not installed", file=sys.stderr)
+            return 1
+        name = archive.entry_type_name(idx)
+        out = args.output or str(base / "midi" / f"block_{idx:03d}_{name}.mid")
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        with open(out, "wb") as f:
+            f.write(mid)
+        print(f"Block {idx} ({name}, {len(data)}B) -> {out} ({len(mid)}B)")
+    return 0
+
+
+def _cmd_sound_export_samples(args):
+    archive = SoundArchive(args.rom)
+    sr = args.sample_rate or 16000
+    base = canonical_output_path(args.rom) / SUBDIR_SOUND
+    if args.index is not None:
+        out = args.output or str(base / "samples" / f"sample_bank_{args.index:03d}.wav")
+        path = archive.export_sample_bank(args.index, out, sr)
+        print(f"Exported block {args.index} -> {path}")
+    else:
+        out_dir = args.output or str(base / "samples")
+        exported = archive.export_all_samples(out_dir, sr)
+        print(f"Exported {len(exported)} sample banks to {out_dir}/")
+        for p in exported:
+            print(f"  {p}")
+
+
+def _cmd_sound_to_sfz(args):
+    archive = SoundArchive(args.rom)
+    sr = args.sample_rate or 16000
+    base = canonical_output_path(args.rom) / SUBDIR_SOUND
+    out_dir = args.output or str(base / "sfz")
+    path = archive.build_sfz(out_dir, sample_rate=sr)
+    print(f"Generated SFZ SoundFont in {path}/")
+    return 0
+
+
+def _cmd_sound_to_sf2(args):
+    archive = SoundArchive(args.rom)
+    sr = args.sample_rate or 16000
+    base = canonical_output_path(args.rom) / SUBDIR_SOUND
+    out = args.output or str(base / "ygogxda.sf2")
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    path = archive.build_sf2(out, sample_rate=sr)
+    print(f"Generated SF2 SoundFont -> {path}")
+    return 0
+    return 0
+
+
 def _cmd_ghidra_lookup(args):
     for addr_str in args.address:
         info = lookup_address(int(addr_str, 16))
@@ -367,6 +474,109 @@ def build_parser():
     lookup_g = ghidra_subparsers.add_parser("lookup")
     lookup_g.add_argument("address", nargs="+")
     lookup_g.set_defaults(func=_cmd_ghidra_lookup)
+
+    # coverage
+    coverage_parser = subparsers.add_parser("coverage", help="ROM coverage utilities")
+    coverage_subparsers = coverage_parser.add_subparsers(
+        dest="coverage_command", parser_class=_HelpOnErrorParser
+    )
+    coverage_subparsers.add_parser(
+        "summary", help="Coverage summary by category"
+    ).set_defaults(func=_cmd_coverage_summary)
+    coverage_subparsers.add_parser("map", help="Print full region map").set_defaults(
+        func=_cmd_coverage_map
+    )
+
+    # sound
+    sound_parser = subparsers.add_parser("sound", help="Sound/music archive utilities")
+    sound_subparsers = sound_parser.add_subparsers(
+        dest="sound_command", parser_class=_HelpOnErrorParser
+    )
+    info_p = sound_subparsers.add_parser("info", help="Show archive info")
+    info_p.add_argument("--rom", required=True)
+    info_p.set_defaults(func=_cmd_sound_info)
+    extract_blocks_p = sound_subparsers.add_parser(
+        "extract", help="Extract all blocks as binary files"
+    )
+    extract_blocks_p.add_argument("--rom", required=True)
+    extract_blocks_p.add_argument(
+        "--output", help="Output directory (default: auto in sound/blocks/)"
+    )
+    extract_blocks_p.set_defaults(func=_cmd_sound_extract_blocks)
+    export_instr_p = sound_subparsers.add_parser(
+        "export-instruments", help="Export sfx_instr blocks as WAV files"
+    )
+    export_instr_p.add_argument("--rom", required=True)
+    export_instr_p.add_argument(
+        "--index",
+        type=int,
+        help="Specific block index to export (default: all sfx_instr blocks)",
+    )
+    export_instr_p.add_argument(
+        "--output",
+        help="Output file or directory (default: auto in sound/instruments/)",
+    )
+    export_instr_p.add_argument(
+        "--sample-rate", type=int, help="Sample rate in Hz (default: 16000)"
+    )
+    export_instr_p.set_defaults(func=_cmd_sound_export_instruments)
+
+    to_midi_p = sound_subparsers.add_parser(
+        "to-midi", help="Convert song blocks to MIDI files"
+    )
+    to_midi_p.add_argument("--rom", required=True)
+    to_midi_p.add_argument(
+        "--index",
+        type=int,
+        nargs="+",
+        required=True,
+        help="Song block index(es) to convert (e.g. --index 2 5 10)",
+    )
+    to_midi_p.add_argument(
+        "--output", help="Output MIDI file path (default: auto in sound/midi/)"
+    )
+    to_midi_p.set_defaults(func=_cmd_sound_to_midi)
+
+    export_samples_p = sound_subparsers.add_parser(
+        "export-samples", help="Export sample banks as WAV files"
+    )
+    export_samples_p.add_argument("--rom", required=True)
+    export_samples_p.add_argument(
+        "--index",
+        type=int,
+        help="Specific block index to export (default: all sample banks)",
+    )
+    export_samples_p.add_argument(
+        "--output", help="Output file or directory (default: auto in sound/samples/)"
+    )
+    export_samples_p.add_argument(
+        "--sample-rate", type=int, help="Sample rate in Hz (default: 16000)"
+    )
+    export_samples_p.set_defaults(func=_cmd_sound_export_samples)
+
+    to_sfz_p = sound_subparsers.add_parser(
+        "to-sfz", help="Build SFZ SoundFont from all samples"
+    )
+    to_sfz_p.add_argument("--rom", required=True)
+    to_sfz_p.add_argument(
+        "--output", help="Output directory (default: auto in sound/sfz/)"
+    )
+    to_sfz_p.add_argument(
+        "--sample-rate", type=int, help="Sample rate in Hz (default: 16000)"
+    )
+    to_sfz_p.set_defaults(func=_cmd_sound_to_sfz)
+
+    to_sf2_p = sound_subparsers.add_parser(
+        "to-sf2", help="Build SF2 SoundFont from all samples"
+    )
+    to_sf2_p.add_argument("--rom", required=True)
+    to_sf2_p.add_argument(
+        "--output", help="Output SF2 path (default: auto in sound/ygogxda.sf2)"
+    )
+    to_sf2_p.add_argument(
+        "--sample-rate", type=int, help="Sample rate in Hz (default: 16000)"
+    )
+    to_sf2_p.set_defaults(func=_cmd_sound_to_sf2)
 
     return parser
 
