@@ -1,117 +1,99 @@
+import hashlib
+import json
 import os
 import struct
 import sys
+import tempfile
 import unittest
 import argparse
+from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 
-from ygogxda.memory import BASE_ADDRESS
-from ygogxda.passwords import YugiohPasswords
 from ygogxda.rom import YugiohROM
+from ygogxda.mock import build_mock_gba
+from ygogxda.memory_ops import (
+    extract_card_artworks,
+    extract_card_packs,
+    extract_duelist_sprites,
+    extract_location_thumbs,
+    extract_card_pile_layers,
+)
 
-
-def write_bytes(payload, real_address, data):
-    start = real_address - BASE_ADDRESS
-    payload[start:start + len(data)] = data
-
-
-def write_u16(payload, real_address, value):
-    write_bytes(payload, real_address, struct.pack('<H', value))
-
-
-def write_u32(payload, real_address, value):
-    write_bytes(payload, real_address, struct.pack('<I', value))
-
-
-def build_synthetic_rom():
-    required_stops = [
-        YugiohROM.CARD_HIGH_RES_BITMAPS.stop,
-        YugiohROM.CARD_HIGH_RES_PALETTES.stop,
-        YugiohROM.CARD_NAMES_OFFSETS_EN.stop,
-        YugiohROM.CARD_TEXTS_OFFSETS_EN.stop,
-        YugiohROM.CARD_PASSWORD_KEYS.stop,
-        YugiohROM.CARD_NUMBER_TO_ID.stop,
-        YugiohROM.CARD_NAMES_OFFSETS_JP.stop,
-        YugiohROM.CARD_NAMES_JP.stop,
-    ]
-    payload = bytearray(max(required_stops) - BASE_ADDRESS)
-
-    header = struct.pack(
-        '<I156s12s4s2s1b1b1b7s1b1b2s',
-        0xEA00002E,
-        b'\x00' * 156,
-        b'YUGIOHGXDA\x00\x00',
-        b'BYGE',
-        b'01',
-        0,
-        0,
-        0,
-        b'\x00' * 7,
-        0,
-        0,
-        b'\x00\x00',
-    )
-    write_bytes(payload, BASE_ADDRESS, header)
-
-    write_u32(payload, YugiohROM.CARD_TOTAL_NUMBER.start, 3)
-
-    for i in range(1201):
-        write_u32(payload, YugiohROM.CARD_NAMES_OFFSETS_EN.start + i * 4, i * 2)
-        write_u32(payload, YugiohROM.CARD_TEXTS_OFFSETS_EN.start + i * 4, i * 3)
-        write_u16(payload, YugiohROM.CARD_NUMBER_TO_ID.start + i * 2, i)
-        write_u32(payload, YugiohROM.CARD_NAMES_OFFSETS_JP.start + i * 4, i * 3)
-
-    names_data = bytearray()
-    texts_data = bytearray()
-    jp_names_data = bytearray()
-    for i in range(1200):
-        names_data.extend(bytes([ord('A') + (i % 26), 0]))
-        texts_data.extend(bytes([ord('a') + (i % 26), ord('!'), 0]))
-        # Two-byte katakana codeword (ア = F1 D0) followed by a null terminator
-        jp_names_data.extend(bytes([0xF1, 0xD0, 0x00]))
-    write_bytes(payload, YugiohROM.CARD_NAMES_EN.start, names_data)
-    write_bytes(payload, YugiohROM.CARD_TEXTS_EN.start, texts_data)
-    write_bytes(payload, YugiohROM.CARD_NAMES_JP.start, jp_names_data)
-
-    password = '12345678'
-    hashed = YugiohPasswords.forward_hash(bytes(int(ch) for ch in password))
-    card_id = 1
-    key = hashed ^ YugiohPasswords.padding(card_id)
-    write_u32(payload, YugiohROM.CARD_PASSWORD_KEYS.start + card_id * 4, key)
-
-    return payload
+BASELINE_DIR = Path(__file__).parent / "baselines"
+REAL_ROM = Path(__file__).parent.parent / "ygogxda.gba"
 
 
 class TestYugiohRomIntegration(unittest.TestCase):
     def test_memory_map_injection_with_mocked_graphics(self):
         local_rom = os.getenv("YGOGXDA_TEST_ROM")
 
-        with patch.object(YugiohROM, '_read_card_artworks', return_value=iter(())):
-            if local_rom:
-                rom = YugiohROM(local_rom)
-            else:
-                payload = build_synthetic_rom()
-                rom = YugiohROM('ignored-by-memory-map', memory_map=payload)
+        if local_rom:
+            rom = YugiohROM(local_rom)
+        else:
+            build_mock_gba("test_mock.gba")
+            rom = YugiohROM("test_mock.gba")
 
-        self.assertEqual(rom.game_title, 'YUGIOHGXDA')
-        self.assertIn(rom.game_code, ('BYGE', 'BYGP'))
-        self.assertEqual(len(rom.card_names), 1200)
-        self.assertEqual(len(rom.card_texts), 1200)
-        self.assertEqual(len(rom.card_names_jp), 1200)
+        self.assertEqual(rom.game_title, "YUGIOHGXDA")
+        self.assertIn(rom.game_code, ("BYGE", "BYGP"))
 
         if local_rom:
+            self.assertEqual(len(rom.card_names), 1200)
             self.assertEqual(rom.num_cards, 1200)
         else:
             self.assertEqual(rom.num_cards, 3)
-            self.assertEqual(rom.card_names[0], 'A')
-            self.assertEqual(rom.card_texts[0], 'a!')
-            self.assertEqual(rom.card_names_jp[0], 'ア')
-            self.assertEqual(rom.passwords.enter('12345678'), 1)
+            # Match the values set in ygogxda/mock.py
+            self.assertEqual(rom.card_names[0], "Mock card_names_en 0")
+            self.assertEqual(rom.card_texts[0], "Mock card_texts_en 0")
+            self.assertEqual(rom.card_names_jp[0], "ア")
+            self.assertEqual(rom.passwords.enter("12345678"), 1)
 
 
-if __name__ == '__main__':
+class TestRealROMBaselines(unittest.TestCase):
+    """Compare extracted sprites against known-good SHA256 baselines.
+    Requires ygogxda.gba in the project root; skipped if absent.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not REAL_ROM.exists():
+            raise unittest.SkipTest(f"{REAL_ROM} not available")
+
+    def _compare(self, sprite_type, extract_fn, **extra_kw):
+        baseline = BASELINE_DIR / f"{sprite_type}.json"
+        self.assertTrue(baseline.exists(), f"No baseline file: {baseline}")
+        expected = json.loads(baseline.read_text())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            extract_fn(str(REAL_ROM), output_dir=out, **extra_kw)
+            got = {
+                png.name: hashlib.sha256(png.read_bytes()).hexdigest()
+                for png in sorted(out.glob("*.png"))
+            }
+
+        self.assertEqual(got, expected)
+
+    def test_cards(self):
+        self._compare("cards", extract_card_artworks)
+
+    def test_card_packs(self):
+        self._compare("card_packs", extract_card_packs)
+
+    def test_duelists(self):
+        self._compare("duelists", extract_duelist_sprites)
+
+    def test_locations(self):
+        self._compare("locations", extract_location_thumbs)
+
+    def test_card_piles(self):
+        self._compare("card_piles", extract_card_pile_layers)
+
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--rom")
     args, remaining = parser.parse_known_args()

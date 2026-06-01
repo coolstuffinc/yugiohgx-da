@@ -27,7 +27,26 @@ class GBAGraphics:
     def decode_8bpp_tiles(data):
         """Decode raw bytes into a list of 8x8 tiles (8bpp)."""
         tile_count = len(data) // 64
-        return np.frombuffer(data, dtype=np.uint8).reshape(tile_count, 8, 8)
+        return np.frombuffer(data, dtype=np.uint8).copy().reshape(tile_count, 8, 8)
+
+    @staticmethod
+    def encode_4bpp_tiles(tiles):
+        """Encode 8x8 tiles into raw nibble-packed bytes (4bpp)."""
+        tile_count = tiles.shape[0]
+        data = bytearray(tile_count * 32)
+        for ti in range(tile_count):
+            tbase = ti * 32
+            for py in range(8):
+                for cp in range(4):
+                    p1 = tiles[ti, py, cp * 2] & 0x0F
+                    p2 = tiles[ti, py, cp * 2 + 1] & 0x0F
+                    data[tbase + py * 4 + cp] = p1 | (p2 << 4)
+        return bytes(data)
+
+    @staticmethod
+    def encode_8bpp_tiles(tiles):
+        """Encode 8x8 tiles into raw bytes (8bpp)."""
+        return tiles.flatten().tobytes()
 
     @staticmethod
     def assemble_from_map(tiles, tile_map):
