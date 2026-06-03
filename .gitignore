@@ -171,3 +171,10 @@ assets/
 ghidra/
 *.extracted/
 dumps/
+
+# Artifacts
+*.wav
+*.midi
+*.png
+*.sf2
+*.sfz
