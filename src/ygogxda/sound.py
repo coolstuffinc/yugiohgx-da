@@ -1,7 +1,6 @@
 import struct
 import wave
 import io
-import math
 from pathlib import Path
 
 try:
@@ -9,222 +8,411 @@ try:
 except ImportError:
     MIDIFile = None
 
-# Estimated parameter counts per command high-nibble for the tracker format.
-# Based on Ghidra decompilation of FUN_080ef2fc.
-# Key: high nibble of command byte (cmd >> 4), value: (num_params, description)
-CMD_PARAMS = {
-    0x1: (1, "note-on with pitch"),
-    0x2: (1, "set frequency"),
-    0x3: (1, "volume fine adjust"),
-    0x4: (1, "volume set"),
-    0x5: (1, "instrument/param"),
-    0x6: (0, "sub-track trigger"),
-    0x7: (2, "frequency/bend"),
-    0x8: (1, "note param"),
-    0x9: (1, "instrument / note param"),
-    0xA: (1, "note/pan"),
-    0xB: (2, "pitch bend"),
-    0xC: (1, "note-on specific"),
-    0xD: (1, "note + param"),
-    0xE: (1, "extended command"),
-}
 
-# Special commands 0xF0-0xFF parameter counts
-SPECIAL_CMD_PARAMS = {
-    0xF0: (0, "portamento/effect"),
-    0xF1: (0, "reserved"),
-    0xF2: (2, "effect control (2 params: value, depth)"),
-    0xF3: (2, "pitch slide (2 params: semitones, speed)"),
-    0xF4: (2, "envelope target (2 params: target, speed)"),
-    0xF5: (0, "noise mode"),
-    0xF6: (1, "set param"),
-    0xF7: (2, "channel config (2 params)"),
-    0xF8: (1, "volume/pan set"),
-    0xF9: (0, "stop"),
-    0xFA: (0, "jump short"),
-    0xFB: (4, "jump absolute (4-byte addr)"),
-    0xFC: (1, "repeat/conditional"),
-    0xFD: (0, "stop track"),
-    0xFE: (0, "end of track"),
-    0xFF: (0, "loop/return"),
-}
+# ---------------------------------------------------------------------------
+# Layer 1 bytecode parsing
+# Based on Ghidra decompilation of FUN_080efa64 (16-voice song engine).
+# ---------------------------------------------------------------------------
+
+# Virtual address of the song data pointer table (46 entries × 0x24 bytes)
+_SONG_TABLE_VADDR = 0x08191970
 
 
-def _cmd_param_count(cmd):
-    if 0x10 <= cmd <= 0xEF:
-        nibble = (cmd >> 4) & 0xF
-        return CMD_PARAMS.get(nibble, (0, ""))[0]
-    if 0xF0 <= cmd <= 0xFF:
-        return SPECIAL_CMD_PARAMS.get(cmd, (0, ""))[0]
-    return 0
+def _read_song_table(rom_path):
+    """Read the song data table.
+
+    Each entry (0x24 bytes):
+      +0x00: u32 pointer to raw bytecode in ROM
+      +0x04: 16 × u16 voice base offsets within the bytecode
+    Returns list of dicts.
+    """
+    import struct
+
+    entries = []
+    with open(rom_path, "rb") as f:
+        f.seek(_SONG_TABLE_VADDR - 0x08000000)
+        while True:
+            data = f.read(0x24)
+            if len(data) < 0x24:
+                break
+            ptr = struct.unpack_from("<I", data, 0)[0]
+            if not (0x08000000 <= ptr <= 0x0A000000):
+                break
+            offsets = list(struct.unpack_from("<16H", data, 4))
+            entries.append({"ptr": ptr, "offsets": offsets})
+    return entries
+
+
+def _get_voice_bytecode(rom_path, song_idx, voice_idx):
+    """Get the raw bytecode for a single voice of a song."""
+    entries = _read_song_table(rom_path)
+    if song_idx >= len(entries):
+        return b""
+    e = entries[song_idx]
+    start = e["offsets"][voice_idx]
+    # End is the next voice offset (or next entry's start)
+    end = min(
+        (o for o in e["offsets"] if o > start),
+        default=None,
+    )
+    if end is None:
+        end = start + 0x10000  # generous fallback
+    with open(rom_path, "rb") as f:
+        f.seek(e["ptr"] - 0x08000000)
+        data = f.read(end)
+    if start >= len(data):
+        return b""
+    return data[start:end]
+
+
+def _read_bytecode(rom_path, song_idx):
+    """Read the full bytecode blob for a song."""
+    entries = _read_song_table(rom_path)
+    e = entries[song_idx]
+    # Find the maximum voice offset to know how much to read
+    max_off = max(e["offsets"])
+    with open(rom_path, "rb") as f:
+        f.seek(e["ptr"] - 0x08000000)
+        # Read from start to at least max_off + some margin
+        data = f.read(max_off + 0x10000)
+    return data, e["offsets"]
 
 
 def _note_from_param(param):
-    """Heuristic: map a tracker parameter byte to a MIDI note number (0-127).
+    """Map a tracker parameter byte to a MIDI note number (0-127).
 
     The GBA sound engine packs note info: top 3 bits = octave, bottom 5 bits = semitone.
     Octave range 0-7 mapped to MIDI octaves 2-9.
     """
     octave = (param >> 5) & 7
     semitone = param & 0x1F
-    return octave * 12 + semitone + 12  # MIDI note 12 = C0
+    return octave * 12 + semitone + 12
+
+
+# Per-voice state for the streaming parser
+class _VoiceState:
+    __slots__ = (
+        "offset",
+        "note_pitch",
+        "note_start",
+        "volume",
+        "instrument",
+        "active",
+        "pitch_bend",
+        "pan",
+    )
+
+    def __init__(self):
+        self.offset = 0
+        self.note_pitch = None
+        self.note_start = 0
+        self.volume = 100
+        self.instrument = 0
+        self.active = True
+        self.pitch_bend = 0
+        self.pan = 64
+
+
+def _parse_voice_events(bytecode):
+    """Parse a single voice's bytecode stream into (delay_note) pairs.
+
+    delay_note is a list of (delay_ticks, pitch_or_None, volume, instrument).
+    """
+    i = 0
+    events = []
+    tick = 0
+    current_vol = 100
+    current_instr = 0
+    current_pitch = None
+    note_on_tick = None
+
+    def _note_off(at_tick):
+        nonlocal note_on_tick
+        if note_on_tick is not None and current_pitch is not None:
+            dur = at_tick - note_on_tick
+            if dur > 0:
+                events.append(
+                    (note_on_tick, current_pitch, current_vol, current_instr, dur)
+                )
+        note_on_tick = None
+
+    def _note_on(at_tick, pitch):
+        nonlocal note_on_tick, current_pitch
+        _note_off(at_tick)
+        current_pitch = pitch
+        note_on_tick = at_tick
+
+    while i < len(bytecode):
+        cmd = bytecode[i]
+        i += 1
+
+        # --- Termination / loop commands ---
+        if cmd == 0xFD:  # stop
+            _note_off(tick)
+            break
+        if cmd == 0xFE:  # end of track
+            _note_off(tick)
+            break
+        if cmd == 0xFF:  # loop / return
+            _note_off(tick)
+            break
+
+        # --- Special commands 0xF0-0xFC ---
+        if cmd >= 0xF0:
+            consumed = 1
+            if cmd == 0xF0:  # pan
+                if i < len(bytecode):
+                    i += 1
+                    consumed = 2
+            elif cmd == 0xF1:  # vibrato
+                if i < len(bytecode):
+                    i += 1
+                    consumed = 2
+            elif cmd == 0xF2:  # freq adjust (2 params)
+                if i + 1 < len(bytecode):
+                    i += 2
+                    consumed = 3
+            elif cmd == 0xF3:  # pitch slide (2 params)
+                if i + 1 < len(bytecode):
+                    i += 2
+                    consumed = 3
+            elif cmd == 0xF4:  # envelope (2 params)
+                if i + 1 < len(bytecode):
+                    i += 2
+                    consumed = 3
+            elif cmd == 0xF5:  # noise (1 param)
+                if i < len(bytecode):
+                    i += 1
+                    consumed = 2
+            elif cmd == 0xF6:  # instrument select
+                if i < len(bytecode):
+                    val = bytecode[i]
+                    i += 1
+                    consumed = 2
+                    if val < 100:
+                        current_instr = val
+            elif cmd == 0xF7:  # channel config (1 param)
+                if i < len(bytecode):
+                    i += 1
+                    consumed = 2
+            elif cmd == 0xF8:  # volume set (1 param)
+                if i < len(bytecode):
+                    current_vol = min(127, bytecode[i] & 0x7F)
+                    i += 1
+                    consumed = 2
+            elif cmd == 0xF9:  # sub-track effect (2 params)
+                if i + 1 < len(bytecode):
+                    i += 2
+                    consumed = 3
+            elif cmd == 0xFA:  # conditional (1 param)
+                if i < len(bytecode):
+                    i += 1
+                    consumed = 2
+            elif cmd == 0xFB:  # absolute jump (4 bytes)
+                if i + 3 < len(bytecode):
+                    i += 4
+                    consumed = 5
+            elif cmd == 0xFC:  # repeat (1 param)
+                if i < len(bytecode):
+                    i += 1
+                    consumed = 2
+
+            # Consumed bytes include the command byte, so we already advanced i.
+
+        # --- Normal commands 0x00-0xEF ---
+        elif cmd < 0xF0:
+            if cmd >= 0xE0:  # E0-EF: note/freq (param = same as delay byte)
+                nibble = cmd & 7
+                if cmd & 8:  # extended: next byte is nibble
+                    if i < len(bytecode):
+                        nibble = bytecode[i]
+                        i += 1
+                if i < len(bytecode):
+                    param = bytecode[i]  # param AND delay
+                    i += 1
+                    pitch = _note_from_param(param)
+                    _note_on(tick, pitch)
+
+            elif cmd >= 0xD0:  # D0-DF: note with param (param = same as delay)
+                nibble = cmd & 7
+                if cmd & 8:  # extended
+                    if i < len(bytecode):
+                        nibble = bytecode[i]
+                        i += 1
+                if i < len(bytecode):
+                    param = bytecode[i]
+                    i += 1
+                    pitch = _note_from_param(param)
+                    _note_on(tick, pitch)
+
+            elif cmd >= 0xC0:  # C0-CF: note with param
+                nibble = cmd & 7
+                if cmd & 8:
+                    if i < len(bytecode):
+                        nibble = bytecode[i]
+                        i += 1
+                if i < len(bytecode):
+                    param = bytecode[i]
+                    i += 1
+                    pitch = _note_from_param(param)
+                    _note_on(tick, pitch)
+
+            elif cmd >= 0xB0:  # B0-BF: frequency / pitch
+                nibble = cmd & 7
+                if cmd & 8:
+                    if i < len(bytecode):
+                        nibble = bytecode[i]
+                        i += 1
+                if i < len(bytecode):
+                    i += 1  # param consumed
+
+            elif cmd >= 0xA0:  # A0-AF: complex note with instrument
+                nibble = cmd & 7
+                if cmd & 8:  # extended nibble
+                    if i < len(bytecode):
+                        nibble = bytecode[i]
+                        i += 1
+                if i < len(bytecode):
+                    val = bytecode[i]
+                    i += 1
+                    # Check for extended value
+                    if val > 0xEF and i < len(bytecode):
+                        val = ((val & 0xF) << 8) | bytecode[i]
+                        i += 1
+                    pitch = _note_from_param(val & 0xFF)
+                    # Optional extra param for 0xA8-0xAF
+                    if cmd >= 0xA8 and i < len(bytecode):
+                        i += 1  # extra param (pitch offset)
+                    _note_on(tick, pitch)
+
+            elif cmd >= 0x90:  # 90-9F: no-op / rest
+                pass
+
+            else:  # 00-8F
+                if cmd >= 0x80:  # 80-8F: encoded volume
+                    val = (cmd & 0x3F) << 6
+                    if val <= 127:
+                        current_vol = val
+                else:  # 00-7F: volume/pitch offset
+                    pass  # relative adjustment, keep vol as-is
+
+        # --- Read delay (1-3 bytes) ---
+        if i >= len(bytecode):
+            break
+        delay_byte = bytecode[i]
+        i += 1
+
+        if delay_byte >= 0xE0:
+            if delay_byte < 0xF0:  # E0-EF: 2-byte delay
+                if i < len(bytecode):
+                    delay = ((delay_byte & 0x0F) << 8) | bytecode[i]
+                    i += 1
+                else:
+                    delay = 0
+            else:  # F0-FF: 3-byte delay
+                if i + 1 < len(bytecode):
+                    delay = bytecode[i] | (bytecode[i + 1] << 8)
+                    i += 2
+                else:
+                    delay = 0
+        else:  # 00-DF: direct delay
+            delay = delay_byte
+
+        tick += delay
+
+        if delay == 0:
+            continue  # process next command immediately
+
+    # Close final note
+    _note_off(tick)
+
+    return events
+
+
+_GBA_FRAMES_PER_SECOND = 59.73
 
 
 def song_to_midi(song_data, ticks_per_quart=480, bpm=120, track_name="Song"):
     """Convert parsed song events to a MIDI file using midiutil.
 
-    The low nibble of 0x10-0x1F selects a voice (0-15). Each voice maps
-    to a MIDI channel for polyphonic playback.
+    NOTE: song_data is the raw bytecode from the MATRIX1 archive.
+    For Layer 1 songs, use song_to_midi_layer1() with the real table instead.
+    """
+    if MIDIFile is None:
+        return None
+    return None
 
-    Returns raw MIDI bytes, or None if midiutil is not installed.
+
+def parse_song_events(data, max_events=0):
+    """Parse a song block's data stream into events.
+
+    Kept for API compat. Returns empty list — use _parse_voice_events
+    for the streaming parser, or song_to_midi_layer1 for full songs.
+    """
+    return []
+
+
+def song_events_to_text(events, max_cmds=6):
+    lines = []
+    for idx, (tick, pitch, volume, instrument, duration) in enumerate(events):
+        lines.append(
+            f"[{idx:4d}] tick={tick:5d}  pitch={pitch:3d}  "
+            f"vol={volume:3d}  instr={instrument:3d}  dur={duration:4d}"
+        )
+    return "\n".join(lines)
+
+
+def song_to_midi_layer1(rom_path, song_idx, ticks_per_quart=480, bpm=120):
+    """Convert a Layer 1 song (from table at 0x08191970) to MIDI.
+
+    Parses all 16 voices and produces a multi-track MIDI file.
+    Each active voice gets its own MIDI track.
+
+    Returns raw MIDI bytes, or None if midiutil is not installed or no voices.
     """
     if MIDIFile is None:
         return None
 
-    # Skip the 12-byte block header (type_id + size_field + marker)
-    song_data = song_data[12:]
+    data, offsets = _read_bytecode(rom_path, song_idx)
 
-    events = parse_song_events(song_data)
+    # Parse all active voices (non-zero offset or voice 0)
+    parsed = []
+    for voice_idx in range(16):
+        start = offsets[voice_idx]
+        end = min((o for o in offsets if o > start), default=len(data))
+        bytecode = data[start:end]
+        if not bytecode:
+            continue
+        events = _parse_voice_events(bytecode)
+        if events:
+            parsed.append((voice_idx, events))
 
-    mf = MIDIFile(1, ticks_per_quarternote=ticks_per_quart)
-    track = 0
-    time = 0
-    mf.addTrackName(track, time, track_name)
-    mf.addTempo(track, time, bpm)
+    if not parsed:
+        return None
 
-    # Per-voice state: { voice_num: {pitch, start, vol, chan, bank} }
-    voices = {}
-    global_vol = 100
+    # GBA frame → MIDI beat conversion
+    # 1 beat = 60/bpm seconds, 1 GBA frame = 1/59.73 seconds
+    frame_to_beat = bpm / (60.0 * _GBA_FRAMES_PER_SECOND)
 
-    def _close(v, at_time):
-        info = voices.pop(v, None)
-        if info is None or info["pitch"] is None:
-            return
-        dur = at_time - info["start"]
-        if dur > 0:
+    mf = MIDIFile(len(parsed), ticks_per_quarternote=ticks_per_quart)
+
+    for track_idx, (voice_idx, events) in enumerate(parsed):
+        mf.addTrackName(track_idx, 0, f"Voice {voice_idx}")
+        mf.addTempo(track_idx, 0, bpm)
+        for tick, pitch, vol, instr, dur in events:
+            start_beat = tick * frame_to_beat
+            dur_beat = dur * frame_to_beat
             mf.addNote(
-                track, info["chan"], info["pitch"], info["start"], dur, info["vol"]
+                track_idx, 0, pitch, start_beat, max(dur_beat, 0.001), min(127, vol)
             )
-
-    for delay, cmds in events:
-        time += delay
-        for cmd, params in cmds:
-            if 0x10 <= cmd <= 0x1F and params:
-                voice = cmd & 0x0F
-                _close(voice, time)
-                pitch = _note_from_param(params[0])
-                voices[voice] = {
-                    "pitch": pitch,
-                    "start": time,
-                    "vol": global_vol,
-                    "chan": voice % 16,
-                    "bank": 0,
-                }
-
-            elif 0x30 <= cmd <= 0x3F and params:
-                global_vol = min(127, max(0, params[0] & 0x7F))
-
-            elif 0x40 <= cmd <= 0x4F and params:
-                global_vol = min(127, params[0] & 0x7F)
-
-            elif 0x90 <= cmd <= 0x9F and params:
-                instr = (cmd & 0x0F) | ((params[0] & 0x0F) << 4)
-                bank = instr // 128
-                prog = instr % 128
-                for info in voices.values():
-                    if bank != info.get("bank", 0):
-                        mf.addControllerEvent(track, info["chan"], time, 0, bank)
-                        info["bank"] = bank
-                    mf.addProgramChange(track, info["chan"], time, prog)
-
-            elif 0xB0 <= cmd <= 0xBF and len(params) >= 2:
-                pb = ((params[0] & 0x7F) | ((params[1] & 0x7F) << 7)) - 8192
-                for info in voices.values():
-                    mf.addPitchWheelEvent(track, info["chan"], time, pb)
-
-            elif cmd == 0xF8 and params:
-                global_vol = min(127, params[0] & 0x7F)
-
-            elif cmd in (0xFD, 0xFE, 0xF9, 0xFF):
-                for v in list(voices.keys()):
-                    _close(v, time)
-
-    # Close any hanging voices
-    for v in list(voices.keys()):
-        _close(v, time)
 
     out = io.BytesIO()
     mf.writeFile(out)
     return out.getvalue()
 
 
-def parse_song_events(data, max_events=0):
-    """Parse a song block's data stream into events.
-
-    Each event: (delay, [(cmd, [params...]), ...])
-    """
-    i = 0
-    events = []
-    while i < len(data):
-        if max_events and len(events) >= max_events:
-            break
-
-        # --- read delay ---
-        b = data[i]
-        i += 1
-        if b >= 0xF0:
-            if i >= len(data):
-                break
-            delay = ((b & 0x0F) << 8) | data[i]
-            i += 1
-        else:
-            delay = b
-
-        # --- read commands for this row ---
-        cmds = []
-        while i < len(data):
-            b = data[i]
-            if 0x00 <= b <= 0x0F:
-                # next event's delay — push back
-                break
-
-            cmd = b
-            i += 1
-            n = _cmd_param_count(cmd)
-            raw_params = []
-            for _ in range(n):
-                if i >= len(data):
-                    break
-                raw_params.append(data[i])
-                i += 1
-            cmds.append((cmd, raw_params))
-
-        events.append((delay, cmds))
-
-    return events
-
-
-def song_events_to_text(events, max_cmds=6):
-    lines = []
-    for idx, (delay, cmds) in enumerate(events):
-        parts = []
-        for cmd, params in cmds[:max_cmds]:
-            if cmd >= 0xF0:
-                label = f"0x{cmd:02X}"
-            elif cmd >= 0x80:
-                label = f"0x{cmd:02X}"
-            else:
-                label = f"0x{cmd:02X}"
-            if params:
-                label += "(" + ",".join(f"0x{p:02X}" for p in params) + ")"
-            parts.append(label)
-        if len(cmds) > max_cmds:
-            parts.append("...")
-        lines.append(f"[{idx:3d}] delay={delay:3d}  {' '.join(parts)}")
-    return "\n".join(lines)
-
-
 _SOUND_ARCHIVE_VADDR = 0x081EE230
+_SOUND_ROM_TABLE_VADDR = 0x080F2D50  # 37 entries, table_sel == 0x9
 
 BLOCK_TYPES = {
     0x1000: ("sample_bank", "PCM sample data bank"),
@@ -344,8 +532,7 @@ class SoundArchive:
             w.setnchannels(1)
             w.setsampwidth(1)
             w.setframerate(sample_rate)
-            unsigned = bytearray((b + 128) & 0xFF for b in samples)
-            w.writeframes(bytes(unsigned))
+            w.writeframes(bytes(samples))
         return str(outpath)
 
     def export_all_samples(self, output_dir, sample_rate=16000):
@@ -382,8 +569,7 @@ class SoundArchive:
             w.setnchannels(1)
             w.setsampwidth(1)
             w.setframerate(sample_rate)
-            unsigned = bytearray((b + 128) & 0xFF for b in samples)
-            w.writeframes(bytes(unsigned))
+            w.writeframes(bytes(samples))
         return str(outpath)
 
     def export_all_instruments(self, output_dir, sample_rate=16000):
@@ -398,22 +584,24 @@ class SoundArchive:
                 exported.append(str(wav_path))
         return exported
 
-    def _collect_block_samples(self):
-        """Collect ALL blocks in MATRIX1 order as potential samples.
+    PCM_BLOCK_TYPES = {0x1000, 0x0AA7}
 
-        The GBA engine treats every block as a playable instrument:
-          - data at +0x0C is PCM (8-bit unsigned, skipping 12-byte block header)
-          - block type_id is used as pitch_factor by sound_note_init
-          - marker field contains loop flags (0xFFFFFFFF = no loop)
-        Blocks 0-24 are song data (tracker commands, not PCM), but they may
-        still be referenced as instruments — they'll just sound like noise.
+    def _collect_block_samples(self):
+        """Collect PCM blocks in MATRIX1 order.
+
+        MATRIX1 entries can point to songs (bytecode) or samples (PCM).
+        Non-PCM blocks (songs, sfx sequences) are replaced with a silent
+        sample so instrument numbering stays consistent with the game.
         """
         samples = []
         for i in range(self.num_entries):
             hdr = self.entry_header(i)
-            data = self.get_entry_data(i)
-            pcm = data[12:]
             tid = hdr["type_id"] if hdr else 0
+            if hdr and tid in self.PCM_BLOCK_TYPES:
+                data = self.get_entry_data(i)
+                pcm = data[12:]
+            else:
+                pcm = bytes([128, 128])
             samples.append(
                 {
                     "name": f"block{i:03d}_t{tid:04x}",
@@ -423,6 +611,40 @@ class SoundArchive:
                     "source": f"block[{i}] type=0x{tid:08X}" if hdr else f"block[{i}]",
                 }
             )
+        return samples
+
+    def _collect_rom_table_samples(self):
+        samples = []
+        with open(self.rom_path, "rb") as f:
+            f.seek(_SOUND_ROM_TABLE_VADDR - 0x08000000)
+            ptrs = []
+            while True:
+                buf = f.read(4)
+                if len(buf) < 4:
+                    break
+                ptr = struct.unpack_from("<I", buf, 0)[0]
+                if 0x08000000 <= ptr <= 0x08200000:
+                    ptrs.append(ptr)
+                else:
+                    break
+            for i, ptr in enumerate(ptrs):
+                f.seek(ptr - 0x08000000)
+                hdr = f.read(12)
+                if len(hdr) < 12:
+                    break
+                tid = struct.unpack_from("<I", hdr, 0)[0]
+                sz = struct.unpack_from("<I", hdr, 4)[0]
+                mk = struct.unpack_from("<I", hdr, 8)[0]
+                pcm = f.read(sz)
+                samples.append(
+                    {
+                        "name": f"rom_instr_{i:03d}_t{tid:04x}",
+                        "data": pcm,
+                        "type_id": tid,
+                        "marker": mk,
+                        "source": f"rom_table[{i}] type=0x{tid:08X}",
+                    }
+                )
         return samples
 
     def build_sfz(self, output_dir, sample_rate=16000, root_key=60):
@@ -438,6 +660,7 @@ class SoundArchive:
         all_samples = self._collect_block_samples()
         if not all_samples:
             raise ValueError("No samples found")
+        all_samples.extend(self._collect_rom_table_samples())
 
         num_samples = len(all_samples)
 
@@ -450,8 +673,7 @@ class SoundArchive:
                 w.setnchannels(1)
                 w.setsampwidth(1)
                 w.setframerate(sample_rate)
-                unsigned = bytearray((b + 128) & 0xFF for b in raw8)
-                w.writeframes(bytes(unsigned))
+                w.writeframes(bytes(raw8))
             wav_names.append(wav_name)
 
         lines = [
@@ -505,9 +727,14 @@ Requires bank select support in your player.
         all_samples = self._collect_block_samples()
         if not all_samples:
             raise ValueError("No samples found")
+        all_samples.extend(self._collect_rom_table_samples())
 
         total = len(all_samples)
-        root_key = 60
+
+        # type_id = 0x1000 is the pitch reference: blocks with this type_id
+        # play at the natural sample rate. Other types scale proportionally:
+        # effective_rate = sample_rate * type_id / 0x1000.
+        PITCH_REFERENCE = 0x1000
 
         # Convert 8-bit unsigned PCM to 16-bit signed
         pcm16 = bytearray()
@@ -580,7 +807,9 @@ Requires bank select support in your player.
         for idx, s in enumerate(all_samples):
             ibag.extend(struct.pack("<HH", gen_idx, 0))
             igen.extend(struct.pack("<HH", 43, 0x7F00))  # key range 0-127
-            igen.extend(struct.pack("<HH", 58, root_key))  # overridingRootKey
+            # Sample rate already encodes the type_id pitch ratio (Approach A),
+            # so root key stays at 60 (C4) for all blocks.
+            igen.extend(struct.pack("<HH", 58, 60))  # overridingRootKey
             marker = s.get("marker", 0xFFFFFFFF)
             sample_modes = 1 if marker != 0xFFFFFFFF and marker != 0 else 0
             igen.extend(struct.pack("<HH", 54, sample_modes))
@@ -596,6 +825,11 @@ Requires bank select support in your player.
             start = sample_starts[idx]
             sample_len_16bit = len(s["data"])
             end = start + sample_len_16bit
+            block_sample_rate = (
+                int(round(sample_rate * s["type_id"] / PITCH_REFERENCE))
+                if s["type_id"] > 0
+                else sample_rate
+            )
             marker = s.get("marker", 0xFFFFFFFF)
             if marker != 0xFFFFFFFF and marker != 0:
                 loop_start = start + marker
@@ -610,8 +844,8 @@ Requires bank select support in your player.
                     end,
                     loop_start,
                     loop_end,
-                    sample_rate,
-                    root_key,
+                    block_sample_rate,
+                    60,
                     0,
                     0,
                     1,

@@ -275,7 +275,10 @@ def _cmd_sound_to_midi(args):
         data = archive.get_entry_data(idx)
         mid = song_to_midi(data)
         if mid is None:
-            print(f"error: midiutil not installed", file=sys.stderr)
+            print(
+                f"error: song_to_midi returned None (midiutil missing or unsupported format)",
+                file=sys.stderr,
+            )
             return 1
         name = archive.entry_type_name(idx)
         out = args.output or str(base / "midi" / f"block_{idx:03d}_{name}.mid")
@@ -283,6 +286,23 @@ def _cmd_sound_to_midi(args):
         with open(out, "wb") as f:
             f.write(mid)
         print(f"Block {idx} ({name}, {len(data)}B) -> {out} ({len(mid)}B)")
+    return 0
+
+
+def _cmd_sound_to_midi_layer1(args):
+    from .sound import song_to_midi_layer1
+
+    base = canonical_output_path(args.rom) / SUBDIR_SOUND
+    for idx in args.index:
+        mid = song_to_midi_layer1(args.rom, idx)
+        if mid is None:
+            print(f"error: song_to_midi_layer1 returned None", file=sys.stderr)
+            return 1
+        out = args.output or str(base / "midi" / f"layer1_song_{idx:03d}.mid")
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        with open(out, "wb") as f:
+            f.write(mid)
+        print(f"Song {idx} -> {out} ({len(mid)}B)")
     return 0
 
 
@@ -553,6 +573,22 @@ def build_parser():
         "--sample-rate", type=int, help="Sample rate in Hz (default: 16000)"
     )
     export_samples_p.set_defaults(func=_cmd_sound_export_samples)
+
+    to_midi_layer1_p = sound_subparsers.add_parser(
+        "to-midi-layer1", help="Convert Layer 1 songs (from 0x08191970 table) to MIDI"
+    )
+    to_midi_layer1_p.add_argument("--rom", required=True)
+    to_midi_layer1_p.add_argument(
+        "--index",
+        type=int,
+        nargs="+",
+        required=True,
+        help="Song index(es) from the 46-entry table at 0x08191970",
+    )
+    to_midi_layer1_p.add_argument(
+        "--output", help="Output MIDI file path (default: auto in sound/midi/)"
+    )
+    to_midi_layer1_p.set_defaults(func=_cmd_sound_to_midi_layer1)
 
     to_sfz_p = sound_subparsers.add_parser(
         "to-sfz", help="Build SFZ SoundFont from all samples"
